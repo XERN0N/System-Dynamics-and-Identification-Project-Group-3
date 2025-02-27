@@ -122,12 +122,31 @@ class Beam_Lattice:
                                             [  0, -13*L, -3*L**2,   0, -22*L, 4*L**2]])
             element_mass_matrix *= RHO*A*L/420
             # Determines the stiffness matrix per beam element.
-            element_stiffness_matrix = np.array([[ E*A/L,            0,           0, -E*A/L,            0,           0],
-                                                 [     0,  12*E*I/L**3,  6*E*I/L**2,      0, -12*E*I/L**3,  6*E*I/L**2],
-                                                 [     0,   6*E*I/L**2,     4*E*I/L,      0,  -6*E*I/L**2,     2*E*I/L],
-                                                 [-E*A/L,            0,           0,  E*A/L,            0,           0],
-                                                 [     0, -12*E*I/L**3, -6*E*I/L**2,      0,  12*E*I/L**3, -6*E*I/L**2],
-                                                 [     0,   6*E*I/L**2,     2*E*I/L,      0,  -6*E*I/L**2,     4*E*I/L]])
+            element_stiffness_matrix = np.array([[ E*A/L, 0, 0, 0, 0, 0,              
+                                                  -E*A/L, 0, 0, 0, 0, 0],
+                                                 [0,  12*E*I_z/L**3, 0, 0, 0, 6*E*I_z/L**2,              
+                                                  0, -12*E*I_z/L**3, 0, 0, 0, 6*E*I_z/L**2],
+                                                 [0, 0,  12*E*I_y/L**2, 0, -6*E*I_y/L**2, 0,              
+                                                  0, 0, -12*E*I_y/L**3, 0, -6*E*I_y/L**2, 0],
+                                                 [0, 0, 0,  G*J/L, 0, 0,              
+                                                  0, 0, 0, -G*J/L, 0, 0],
+                                                 [0, 0, -6*E*I_y/L**2, 0, 4*E*I_y/L, 0,              
+                                                  0, 0,  6*E*I_y/L**2, 0, 2*E*I_y/L, 0],
+                                                 [0,  6*E*I_z/L**2, 0, 0, 0, 4*E*I_y/L,              
+                                                  0, -6*E*I_z/L**2, 0, 0, 0, 2*E*I_z/L],
+                                                 [-E*A/L, 0, 0, 0, 0, 0,          
+                                                   E*A/L, 0, 0, 0, 0, 0],
+                                                 [0, -12*E*I_z/L**3, 0, 0, 0, -6*E*I_z/L**2,              
+                                                  0,  12*E*I_z/L**3, 0, 0, 0, -6*E*I_z/L**2],
+                                                 [0, 0, -12*E*I_y/L**3, 0, 6*E*I_y/L**2, 0,              
+                                                  0, 0,  12*E*I_y/L**3, 0, 6*E*I_y/L**2, 0],
+                                                 [0, 0, 0, -G*J/L, 0, 0,              
+                                                  0, 0, 0,  G*J/L, 0, 0],
+                                                 [0, 0, -6*E*I_y/L**2, 0, 2*E*I_y/L, 0,              
+                                                  0, 0,  6*E*I_y/L**2, 0, 4*E*I_y/L, 0],
+                                                 [0,  6*E*I_z/L**2, 0, 0, 0, 2*E*I_z/L,              
+                                                  0, -6*E*I_z/L**2, 0, 0, 0, 4*E*I_z/L]])
+            
             # Determines the combined stiffness and mass matrix for the entire edge.
             element_pickoff_operator = np.zeros((6, edge_DOF), dtype=np.int8)
             element_pickoff_operator[:, i*3:i*3+6] = np.eye(6, dtype=np.int8)
