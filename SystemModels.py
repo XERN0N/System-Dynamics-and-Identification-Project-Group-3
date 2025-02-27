@@ -51,21 +51,35 @@ class Beam_Lattice:
         A = cross_sectional_area
 
         # Determines the mass matrix per beam element.
-        element_mass_matrix = np.array([[140,     0,       0,  70,    0,       0],
-                                        [  0,   156,    22*L,   0,   54,   -13*L],
-                                        [  0,  22*L,  4*L**2,   0, 13*L, -3*L**2], 
-                                        [ 70,     0,       0, 140,    0,       0],
-                                        [  0,    54,    13*L,   0,  156,   -22*L],
-                                        [  0, -13*L, -3*L**2,   0, -22*L, 4*L**2]])
+        element_mass_matrix = np.array([[ 140,        0,        0,        0,        0,        0,       70,        0,        0,        0,        0,        0],
+                                        [   0,      156,        0,        0,        0,     22*L,        0,       54,        0,        0,        0,    -13*L],
+                                        [   0,        0,      156,        0,    -22*L,        0,        0,        0,       54,        0,     13*L,        0],
+                                        [   0,        0,        0,   140*I0,        0,        0,        0,        0,        0,  70*I0/A,        0,        0],
+                                        [   0,        0,    -22*L,        0,   4*L**2,        0,        0,        0,    -13*L,        0,  -3*L**2,        0],
+                                        [   0,     22*L,        0,        0,        0,   4*L**2,        0,     13*L,        0,        0,        0,  -3*L**2],
+                                        [  70,        0,        0,        0,        0,        0,      140,        0,        0,        0,        0,        0],
+                                        [   0,       54,        0,        0,        0,     13*L,        0,      156,        0,        0,        0,    -22*L],
+                                        [   0,        0,       54,        0,    -13*L,        0,        0,        0,      156,        0,     22*L,        0],
+                                        [   0,        0,        0,  70*I0/A,        0,        0,        0,        0,        0, 140*I0/A,        0,        0],
+                                        [   0,        0,     13*L,        0,  -3*L**2,        0,        0,        0,     22*L,        0,   4*L**2,        0],
+                                        [   0,    -13*L,        0,        0,        0,  -3*L**2,        0,    -22*L,        0,        0,        0,   4*L**2]])
         element_mass_matrix *= density*A*L/420
 
+
+
         # Determines the stiffness matrix per beam element.
+        # 3D - element
+
+
+        """ 2D - element
         element_stiffness_matrix = np.array([[ E*A/L,            0,           0, -E*A/L,            0,           0],
                                              [     0,  12*E*I/L**3,  6*E*I/L**2,      0, -12*E*I/L**3,  6*E*I/L**2],
                                              [     0,   6*E*I/L**2,     4*E*I/L,      0,  -6*E*I/L**2,     2*E*I/L],
                                              [-E*A/L,            0,           0,  E*A/L,            0,           0],
                                              [     0, -12*E*I/L**3, -6*E*I/L**2,      0,  12*E*I/L**3, -6*E*I/L**2],
                                              [     0,   6*E*I/L**2,     2*E*I/L,      0,  -6*E*I/L**2,     4*E*I/L]])
+        
+        """
         
         # Determines the coordinates for the element vectors.
         edge_vertices_coordinates = np.array([start_vertex['coordinates'] + edge_vector / np.linalg.norm(edge_vector) * i*L for i in range(1, number_of_elements)])
