@@ -6,6 +6,27 @@ from scipy.fft import fft, fftfreq
 import tkinter as tk
 from tkinter import filedialog
 
+Calibration_path = os.getcwd()
+Calibration_path = os.path.join(Calibration_path, "calibAcel.txt")
+if os.path.exists(Calibration_path) == False:
+    print("Calibration file not found")
+else:
+    print("Calibration file found")
+
+try:
+    Calibration = pd.read_csv(Calibration_path, dtype=float, delimiter=",")
+except Exception as e:
+    print(f"Calibration file csv error at {Calibration_path}: \n {e}")
+
+print(Calibration)
+
+Direction = int(input("Please input acc direction for folder files (0, 1, 2 for x, y, z):\n"))
+
+sensitivity = Calibration.iloc[Direction]["Sensitivity (m/s²/LSB)"]
+print(sensitivity)
+bias = 500
+#sensitivity = 0.098127
+
 tk.Tk().withdraw()
 
 Data_folder_path = filedialog.askdirectory()  # selecting the directory for the folders
@@ -46,6 +67,8 @@ for file in File_list:
         Data["fs"] = fs_value
         Data["dt"] = dt_value
 
+        for sensor in range(1, 5):
+            Data[f"Sensor {sensor}"] = (Data[f"Sensor {sensor}"].astype(float) - bias) * sensitivity
         print(Data.head())  # Preview data
 
         # Save new file
