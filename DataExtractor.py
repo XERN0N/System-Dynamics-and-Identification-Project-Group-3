@@ -19,18 +19,21 @@ except Exception as e:
     print(f"Calibration file csv error at {Calibration_path}: \n {e}")
 
 print(Calibration)
+tk.Tk().withdraw()
+Data_folder_path = filedialog.askdirectory()  # selecting the directory for the folders
+File_list = os.listdir(Data_folder_path)  # list of files in the directory
 
 Direction = int(input("Please input acc direction for folder files (0, 1, 2 for x, y, z):\n"))
+if Direction in [0, 1, 2]:
+    print(f"Direction is {Direction}")
+else:
+    print(f"Direction is incorrect: {Direction}")
 
 sensitivity = Calibration.iloc[Direction]["Sensitivity (m/s²/LSB)"]
 print(sensitivity)
-bias = 500
-#sensitivity = 0.098127
+bias = Calibration.iloc[Direction]["Bias"]
 
-tk.Tk().withdraw()
 
-Data_folder_path = filedialog.askdirectory()  # selecting the directory for the folders
-File_list = os.listdir(Data_folder_path)  # list of files in the directory
 
 for file in File_list:
     file_path = os.path.join(Data_folder_path, file)
@@ -68,7 +71,7 @@ for file in File_list:
         Data["dt"] = dt_value
 
         for sensor in range(1, 5):
-            Data[f"Sensor {sensor}"] = (Data[f"Sensor {sensor}"].astype(float) - bias) * sensitivity
+            Data[f"Sensor {sensor}"] = (Data[f"Sensor {sensor}"].astype(float) - bias) * sensitivity #Actual convertion using calibAccel
         print(Data.head())  # Preview data
 
         # Save new file
