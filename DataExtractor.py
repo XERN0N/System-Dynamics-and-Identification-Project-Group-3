@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import os as os
 import re
-from scipy.fft import fft, fftfreq
 import tkinter as tk
 from tkinter import filedialog
 
@@ -52,7 +51,7 @@ for file in File_list:
 
         # Extract numerical values or set None if not found
         fs_value = int(fs_match.group(1)) if fs_match else None
-        dt_value = int(dt_match.group(1)) if dt_match else None
+        dt_value = float(dt_match.group(1)) if dt_match else None
 
         print(f"Extracted fs: {fs_value}, dt: {dt_value}")
 
@@ -72,10 +71,17 @@ for file in File_list:
 
         for sensor in range(1, 5):
             Data[f"Sensor {sensor}"] = (Data[f"Sensor {sensor}"].astype(float) - bias) * sensitivity #Actual convertion using calibAccel
+
+        # Create cumulative time index
+        time_index = np.arange(len(Data)) * dt_value / 1_000_000  # Convert μs to seconds
+
+        # Assign time index
+        Data.insert(4, "Time (us)", time_index)  # Add as a regular column instead of index
+
         print(Data.head())  # Preview data
 
-        # Save new file
-        new_file_path = os.path.join(Data_folder_path, f"manipulated_{file}")
+        # Save new csv with timeseries
+        new_file_path = os.path.join(Data_folder_path, f"timeseries_{file}")
         Data.to_csv(new_file_path, index=False)
         print(f"Saved to: {new_file_path}")
 
