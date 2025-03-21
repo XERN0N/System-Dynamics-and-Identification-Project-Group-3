@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import os as os
 import re
-from scipy.fft import fft, fftfreq
 import tkinter as tk
 from tkinter import filedialog
 
@@ -19,18 +18,21 @@ except Exception as e:
     print(f"Calibration file csv error at {Calibration_path}: \n {e}")
 
 print(Calibration)
+tk.Tk().withdraw()
+Data_folder_path = filedialog.askdirectory()  # selecting the directory for the folders
+File_list = os.listdir(Data_folder_path)  # list of files in the directory
 
 Direction = int(input("Please input acc direction for folder files (0, 1, 2 for x, y, z):\n"))
+if Direction in [0, 1, 2]:
+    print(f"Direction is {Direction}")
+else:
+    print(f"Direction is incorrect: {Direction}")
 
 sensitivity = Calibration.iloc[Direction]["Sensitivity (m/s²/LSB)"]
 print(sensitivity)
-bias = 500
-#sensitivity = 0.098127
+bias = Calibration.iloc[Direction]["Bias"]
 
-tk.Tk().withdraw()
 
-Data_folder_path = filedialog.askdirectory()  # selecting the directory for the folders
-File_list = os.listdir(Data_folder_path)  # list of files in the directory
 
 for file in File_list:
     file_path = os.path.join(Data_folder_path, file)
@@ -49,7 +51,7 @@ for file in File_list:
 
         # Extract numerical values or set None if not found
         fs_value = int(fs_match.group(1)) if fs_match else None
-        dt_value = int(dt_match.group(1)) if dt_match else None
+        dt_value = float(dt_match.group(1)) if dt_match else None
 
         print(f"Extracted fs: {fs_value}, dt: {dt_value}")
 
@@ -68,11 +70,18 @@ for file in File_list:
         Data["dt"] = dt_value
 
         for sensor in range(1, 5):
-            Data[f"Sensor {sensor}"] = (Data[f"Sensor {sensor}"].astype(float) - bias) * sensitivity
+            Data[f"Sensor {sensor}"] = (Data[f"Sensor {sensor}"].astype(float) - bias) * sensitivity #Actual convertion using calibAccel
+
+        # Create cumulative time index
+        time_index = np.arange(len(Data)) * dt_value / 1_000_000  # Convert μs to seconds
+
+        # Assign time index
+        Data.insert(4, "Time (us)", time_index)  # Add as a regular column instead of index
+
         print(Data.head())  # Preview data
 
-        # Save new file
-        new_file_path = os.path.join(Data_folder_path, f"manipulated_{file}")
+        # Save new csv with timeseries
+        new_file_path = os.path.join(Data_folder_path, f"timeseries_{file}")
         Data.to_csv(new_file_path, index=False)
         print(f"Saved to: {new_file_path}")
 
