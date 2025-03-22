@@ -78,7 +78,7 @@ class Beam_Lattice:
             The coordinate set(s) of the vertices not specified using the parameter 'vertex_IDs'. Can have either shape (3,) or (2, 3) for 
             isolated beams. Ignored if both vertices are defined using 'vertex_IDs'.
         edge_polar_rotation : float, optional
-            Rotation of the beam along the beam axis [rad]. The order of rotation is primary-secondary-polar (z-y-x) so this is the last
+            Rotation of the beam along the beam axis [rad]. The order of rotation is polar-primary-secondary (x-z-y) so this is the first
             rotation applied to the beam. Default 0.
         """
         # Creates the start and end vertices based on the given combination of 'vertex_IDs' and 'coordinates'.
