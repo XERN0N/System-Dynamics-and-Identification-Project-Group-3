@@ -1,84 +1,114 @@
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import fft, fftfreq
-import os as os
 import tkinter as tk
 from tkinter import filedialog
 
-tk.Tk().withdraw()
-Data_folder_path = filedialog.askdirectory()  # selecting the directory for the folders
-File_list = os.listdir(Data_folder_path)  # list of files in the directory
 
-for file in File_list:
-    file_path = os.path.join(Data_folder_path, file)
-    print(f"Processing file: {file_path}")
+def select_data_folder():
+    # Opens a folder selection dialog and returns the selected path.
+    root = tk.Tk()
+    root.withdraw()
+    folder_path = filedialog.askdirectory(title="Select Folder Containing CSV Files")
+    return folder_path
 
+
+def load_csv(file_path):
+    #Reads the csv files from the folder
     try:
-        # Read CSV without a header (assumes no column names)
-        Data = pd.read_csv(file_path, dtype=float, delimiter=",")
-
-        if Data.empty or Data.shape[1] < 5:
-            print(f"Skipping {file}: Insufficient data columns")
-            continue
-
-        print(Data.head())  # Preview data
-
-        # Extract time (column 4)
-        Time = Data.iloc[:, 4].values  # Convert to NumPy array
-        Signal_length = len(Time)
-
-        # Compute Delta_T (mean time step in seconds)
-        Delta_T = np.mean(np.diff(Time))  # Convert microseconds to seconds
-
-        # Extract sensor signals (columns 0-3)
-        Sensors = [Data.iloc[:, i].values for i in range(4)]  # List of 4 sensor arrays
-
-        # Compute FFT frequency bins in **Hz** (not rad/s)
-        fft_freq_signal = fftfreq(Signal_length, d=Delta_T)[:Signal_length // 2]
-
-
-        # Prepare the figure
-        plt.figure(figsize=(12, 6))
-        colors = ['b', 'r', 'g', 'm']  # Assign colors for 4 sensors
-
-        for i, signal in enumerate(Sensors):
-            # Compute FFT for each sensor
-            fft_signal = fft(signal)
-            fft_signal_mag = np.abs(fft_signal)
-
-            # Extract the positive half
-            fft_signal_mag = 2.0 / Signal_length * fft_signal_mag[:Signal_length // 2]
-
-            # Find the top 4 peak frequencies
-            num_max_values = 4
-            largest_indices = np.argpartition(fft_signal_mag, -num_max_values)[-num_max_values:]
-            largest_values = fft_signal_mag[largest_indices]
-            max_values = largest_values
-            max_loc = fft_freq_signal[largest_indices]  # Now in Hz
-
-            # Identify peak frequency
-            peakIdx = np.argmax(max_values)
-            peakX = max_loc[peakIdx]  # Already in Hz
-            peakY = max_values[peakIdx]
-
-            print(f"Sensor {i}: Peak Frequency = {peakX:.2f} Hz, Peak Amplitude = {peakY:.3f}")
-
-            # Plot FFT for this sensor
-            plt.plot(fft_freq_signal, fft_signal_mag, label=f'Sensor {i}', color=colors[i])
-            plt.plot(max_loc, max_values, 'o', color=colors[i])  # Highlight peaks
-
-        # Plot formatting
-        plt.xlabel('Frequency (Hz)')  # Now correctly in Hz
-        plt.ylabel('Amplitude')
-        plt.xlim(0,(1/Delta_T)/2)
-        plt.title(f'FFT of the 4 Sensors - {file}')
-        plt.legend()
-        plt.grid()
-        plt.show()
-
+        data = pd.read_csv(file_path, dtype=float, delimiter=",") # Read the CSV file into a DataFrame
+        if data.empty or data.shape[1] < 5: # Check if the file has at least 5 columns
+            raise ValueError("Insufficient data columns") #Error at too few columns
+        return data 
     except Exception as e:
-        print(f"Error processing {file}: {e}")
+        print(f"Failed to load {file_path}: {e}")
+        return None
+
+
+def compute_fft(signal, delta_t):
+    #Computes the FFT of the signal and returns the frequencies and magnitudes
+    n = len(signal)
+    freqs = fftfreq(n, d=delta_t)[:n // 2]
+    fft_vals = fft(signal)
+    mags = 2.0 / n * np.abs(fft_vals[:n // 2])
+    return freqs, mags
+
+
+def find_peak_frequencies(freqs, mags, num_peaks=4):
+    """Finds the top N peak frequencies from the FFT magnitude."""
+    peak_indices = np.argpartition(mags, -num_peaks)[-num_peaks:]
+    peak_freqs = freqs[peak_indices]
+    peak_mags = mags[peak_indices]
+    peak_idx = np.argmax(peak_mags)
+    return peak_freqs, peak_mags, peak_freqs[peak_idx], peak_mags[peak_idx]
+
+
+def plot_fft_results(file_name, fft_results, delta_t):
+    """Plots the FFT results for each sensor."""
+    plt.figure(figsize=(12, 6))
+    colors = ['b', 'r', 'g', 'm']
+
+    for i, (freqs, mags, peaks_f, peaks_m) in enumerate(fft_results):
+        label = f"Sensor {i}"
+        plt.plot(freqs, mags, label=label, color=colors[i])
+        plt.plot(peaks_f, peaks_m, 'o', color=colors[i])  # Highlight peaks
+
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Amplitude")
+    plt.title(f"FFT of the 4 Sensors - {file_name}")
+    plt.xlim(0, 1 / (2 * delta_t))
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def process_file(file_path):
+    """Handles reading, processing, and plotting for one file."""
+    print(f"\nProcessing: {file_path}")
+    data = load_csv(file_path)
+    if data is None:
+        return
+
+    time = data.iloc[:, 4].values
+    delta_t = np.mean(np.diff(time))
+
+    fft_results = []
+
+    for i in range(4):
+        signal = data.iloc[:, i].values
+        freqs, mags = compute_fft(signal, delta_t)
+        peak_freqs, peak_mags, peak_x, peak_y = find_peak_frequencies(freqs, mags)
+
+        print(f"Sensor {i}: Peak Frequency = {peak_x:.2f} Hz, Peak Amplitude = {peak_y:.3f}")
+        fft_results.append((freqs, mags, peak_freqs, peak_mags))
+
+    plot_fft_results(os.path.basename(file_path), fft_results, delta_t)
+
+
+def main():
+    folder_path = select_data_folder()
+    if not folder_path:
+        print("No folder selected. Exiting.")
+        return
+
+    file_list = [f for f in os.listdir(folder_path) if f.lower().endswith(".txt")]
+    if not file_list:
+        print("No CSV files found in the selected directory.")
+        return
+
+    for file in file_list:
+        file_path = os.path.join(folder_path, file)
+        process_file(file_path)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
 
 
 '''
@@ -124,4 +154,4 @@ plt.ylabel('Amplitude')
 plt.xlim(0, 350)
 plt.title('FFT of the Signal')
 plt.show()'
-'''
+print(f"Error processing {file}: {e}")'''
