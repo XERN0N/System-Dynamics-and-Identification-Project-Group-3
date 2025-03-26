@@ -1,9 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 import igraph as ig
-from matplotlib.axes import Axes
 from collections.abc import Collection
-from typing import Callable
 from scipy.linalg import block_diag
 
 class Beam_Lattice:
@@ -134,32 +132,32 @@ class Beam_Lattice:
             J = I_y + I_z
             L = np.linalg.norm(edge_vector) / number_of_elements
             # Determines the mass matrix per beam element.
-            element_mass_matrix = np.array([[140,     0,     0,       0,       0,       0,  70,     0,     0,        0,       0,       0],
-                                            [  0,   156,     0,       0,       0,    22*L,   0,    54,     0,        0,       0,   -13*L],
-                                            [  0,     0,   156,       0,   -22*L,       0,   0,     0,    54,        0,    13*L,       0],
-                                            [  0,     0,     0,  140*I0,       0,       0,   0,     0,     0,  70*I0/A,       0,       0],
-                                            [  0,     0, -22*L,       0,  4*L**2,       0,   0,     0, -13*L,        0, -3*L**2,       0],
-                                            [  0,  22*L,     0,       0,       0,  4*L**2,   0,  13*L,     0,        0,       0, -3*L**2],
-                                            [ 70,     0,     0,       0,       0,       0, 140,     0,     0,        0,       0,       0],
-                                            [  0,    54,     0,       0,       0,    13*L,   0,   156,     0,        0,       0,   -22*L],
-                                            [  0,     0,    54,       0,   -13*L,       0,   0,     0,   156,        0,    22*L,       0],
-                                            [  0,     0,     0, 70*I0/A,       0,       0,   0,     0,     0, 140*I0/A,       0,       0],
-                                            [  0,     0,  13*L,       0, -3*L**2,       0,   0,     0,  22*L,        0,  4*L**2,       0],
-                                            [  0, -13*L,     0,       0,       0, -3*L**2,   0, -22*L,     0,        0,       0,  4*L**2]])
-            element_mass_matrix *= density*A*L/420
+            element_mass_matrix = np.array([[140,     0,     0,         0,       0,       0,  70,     0,     0,        0,       0,       0],
+                                            [  0,   156,     0,         0,       0,    22*L,   0,    54,     0,        0,       0,   -13*L],
+                                            [  0,     0,   156,         0,   -22*L,       0,   0,     0,    54,        0,    13*L,       0],
+                                            [  0,     0,     0,  140*I0/A,       0,       0,   0,     0,     0,  70*I0/A,       0,       0],
+                                            [  0,     0, -22*L,         0,  4*L**2,       0,   0,     0, -13*L,        0, -3*L**2,       0],
+                                            [  0,  22*L,     0,         0,       0,  4*L**2,   0,  13*L,     0,        0,       0, -3*L**2],
+                                            [ 70,     0,     0,         0,       0,       0, 140,     0,     0,        0,       0,       0],
+                                            [  0,    54,     0,         0,       0,    13*L,   0,   156,     0,        0,       0,   -22*L],
+                                            [  0,     0,    54,         0,   -13*L,       0,   0,     0,   156,        0,    22*L,       0],
+                                            [  0,     0,     0,   70*I0/A,       0,       0,   0,     0,     0, 140*I0/A,       0,       0],
+                                            [  0,     0,  13*L,         0, -3*L**2,       0,   0,     0,  22*L,        0,  4*L**2,       0],
+                                            [  0, -13*L,     0,         0,       0, -3*L**2,   0, -22*L,     0,        0,       0,  4*L**2]])
+            element_mass_matrix *= RHO*A*L/420
 
             # Determines the stiffness matrix per beam element.
             element_stiffness_matrix = np.array([[ E*A/L, 0, 0, 0, 0, 0,              
                                                   -E*A/L, 0, 0, 0, 0, 0],
                                                  [0,  12*E*I_z/L**3, 0, 0, 0, 6*E*I_z/L**2,              
                                                   0, -12*E*I_z/L**3, 0, 0, 0, 6*E*I_z/L**2],
-                                                 [0, 0,  12*E*I_y/L**2, 0, -6*E*I_y/L**2, 0,              
+                                                 [0, 0,  12*E*I_y/L**3, 0, -6*E*I_y/L**2, 0,              
                                                   0, 0, -12*E*I_y/L**3, 0, -6*E*I_y/L**2, 0],
                                                  [0, 0, 0,  G*J/L, 0, 0,              
                                                   0, 0, 0, -G*J/L, 0, 0],
                                                  [0, 0, -6*E*I_y/L**2, 0, 4*E*I_y/L, 0,              
                                                   0, 0,  6*E*I_y/L**2, 0, 2*E*I_y/L, 0],
-                                                 [0,  6*E*I_z/L**2, 0, 0, 0, 4*E*I_y/L,              
+                                                 [0,  6*E*I_z/L**2, 0, 0, 0, 4*E*I_z/L,              
                                                   0, -6*E*I_z/L**2, 0, 0, 0, 2*E*I_z/L],
                                                  [-E*A/L, 0, 0, 0, 0, 0,          
                                                    E*A/L, 0, 0, 0, 0, 0],
@@ -183,26 +181,26 @@ class Beam_Lattice:
         
 
         # Rotates the mass and stiffness matrices to the global context.
-        edge_yaw_angle_cos, edge_yaw_angle_sin = edge_vector[:2] / np.linalg.norm(edge_vector[:2])
-        edge_pitch_angle_cos, edge_pitch_angle_sin = edge_vector[::2] / np.linalg.norm(edge_vector[::2])
-        yaw_rotation_matrix = np.array([[edge_yaw_angle_cos, -edge_yaw_angle_sin, 0],
-                                        [edge_yaw_angle_sin,  edge_yaw_angle_cos, 0],
-                                        [                 0,                   0, 1]])
-        pitch_rotation_matrix = np.array([[ edge_pitch_angle_cos, 0, edge_pitch_angle_sin],
-                                          [                    0, 1,                    0],
-                                          [-edge_pitch_angle_sin, 0, edge_pitch_angle_cos]])
-        roll_rotation_matrix = np.array([[1,                 0,                  0],
-                                         [0, np.cos(edge_roll), -np.sin(edge_roll)],
-                                         [0, np.sin(edge_roll),  np.cos(edge_roll)]])
-        rotational_matrix = roll_rotation_matrix @ pitch_rotation_matrix @ yaw_rotation_matrix
+        edge_primary_angle_cos, edge_primary_angle_sin = edge_vector[:2] / np.linalg.norm(edge_vector[:2]) if not np.array_equal(edge_vector[:2], (0, 0)) else (1.0, 0.0)
+        edge_secondary_angle_cos, edge_secondary_angle_sin = (np.linalg.norm(edge_vector[:2]), -edge_vector[2]) / np.linalg.norm(edge_vector)
+        primary_rotation_matrix = np.array([[edge_primary_angle_cos, -edge_primary_angle_sin, 0],
+                                            [edge_primary_angle_sin,  edge_primary_angle_cos, 0],
+                                            [                     0,                       0, 1]])
+        secondary_rotation_matrix = np.array([[ edge_secondary_angle_cos, 0, edge_secondary_angle_sin],
+                                              [                        0, 1,                        0],
+                                              [-edge_secondary_angle_sin, 0, edge_secondary_angle_cos]])
+        polar_rotation_matrix = np.array([[1,                           0,                            0],
+                                          [0, np.cos(edge_roll), -np.sin(edge_roll)],
+                                          [0, np.sin(edge_roll),  np.cos(edge_roll)]])
+        rotational_matrix = secondary_rotation_matrix @ primary_rotation_matrix @ polar_rotation_matrix
         transformation_matrix = block_diag(*(rotational_matrix.T,)*(2*(number_of_elements+1)))
         edge_mass_matrix = transformation_matrix.T @ edge_mass_matrix @ transformation_matrix
         edge_stiffness_matrix = transformation_matrix.T @ edge_stiffness_matrix @ transformation_matrix
         
         def shape_function(x: float) -> npt.NDArray:
-            shape = np.array([[1-x,               0,               0, 0,                   0,                   0, x,             0,             0, 0,              0,              0],
-                              [  0, 1-3*x**2+2*x**3,               0, 0,                   0, x*L-2*L*x**2+L*x**3, 0, 3*x**2-2*x**3,             0, 0,              0, -L*x**2+L*x**3],
-                              [  0,               0, 1-3*x**2+2*x**3, 0, x*L-2*L*x**2+L*x**3,                   0, 0,             0, 3*x**2-2*x**3, 0, -L*x**2+L*x**3,              0]])
+            shape = np.array([[1-x,               0,               0, 0,                    0,                   0, x,             0,             0, 0,             0,              0],
+                              [  0, 1-3*x**2+2*x**3,               0, 0,                    0, x*L-2*L*x**2+L*x**3, 0, 3*x**2-2*x**3,             0, 0,             0, -L*x**2+L*x**3],
+                              [  0,               0, 1-3*x**2+2*x**3, 0, -x*L+2*L*x**2-L*x**3,                   0, 0,             0, 3*x**2-2*x**3, 0, L*x**2-L*x**3,              0]])
             return rotational_matrix @ shape @ block_diag(*(rotational_matrix.T,)*4)
         
 
@@ -274,7 +272,7 @@ class Beam_Lattice:
             # and the second set of columns will represent the DOF's in the edges alone.
             edge_pickoff_operator = np.zeros((edge_DOF + 12, system_DOF), dtype=np.int8)
             # Picking the correct indices for the edge DOF's.
-            edge_pickoff_operator[12:-12, accumulative_edge_DOF:accumulative_edge_DOF+edge_DOF] = np.eye(edge_DOF, dtype=np.int8)
+            edge_pickoff_operator[6:-6, accumulative_edge_DOF:accumulative_edge_DOF+edge_DOF] = np.eye(edge_DOF, dtype=np.int8)
             # Picking the correct indices for the vertices DOF's.
             edge_pickoff_operator[ :6, 6*edge.source:6*edge.source + 6] = np.eye(6, dtype=np.int8)
             edge_pickoff_operator[-6:, 6*edge.target:6*edge.target + 6] = np.eye(6, dtype=np.int8)
@@ -285,10 +283,10 @@ class Beam_Lattice:
             accumulative_edge_DOF += edge_DOF
 
         for vertex in self.graph.vs:
-            if 'point_mass' in vertex.attributes():
+            if 'point_mass' in vertex.attributes() and vertex['point_mass'] is not None:
                 mass = vertex['point_mass']
                 vertex_ID = vertex.index
-                DOF_indices = np.arange(6 * vertex_ID, 6 * vertex_ID + 3)  # Apply mass to (x, y, z) DOFs only
+                DOF_indices = np.arange(6 * vertex_ID, 6 * vertex_ID + 3)
                 system_mass_matrix[np.ix_(DOF_indices, DOF_indices)] += mass * np.eye(3)
 
 
@@ -315,7 +313,7 @@ class Beam_Lattice:
             according to the direction of the edge. Each vertex/nodal displacement is then orded by (x, y, z, phi_x, phi_y, phi_z) 
             displacement.
         """
-        _, stiffness_matrix =  self.get_system_level_matrices()
+        _, stiffness_matrix = self.get_system_level_matrices()
 
         # Applies boundary conditions.
         fixed_DOFs = np.ravel([6*fixed_vertex_ID + np.arange(6) for fixed_vertex_ID in fixed_vertex_IDs])
@@ -362,7 +360,7 @@ class Beam_Lattice:
         """
         # Gets the displacement for all vertices and nodes.
         vertex_and_node_displacements = self.get_static_vertex_and_node_displacements(forces, fixed_vertex_IDs)
-        vertex_displacements, node_displacements = np.split(vertex_and_node_displacements, [3*self.graph.vcount()])
+        vertex_displacements, node_displacements = np.split(vertex_and_node_displacements, [6*self.graph.vcount()])
         # Initializes array for the displaced position of all vertices and nodes along any edge in the order of the edge direction. 
         # Shape: (number of edges, number of vertex and nodes for the given edge).
         vertex_and_node_displaced_positions = list()
@@ -436,7 +434,7 @@ class Beam_Lattice:
             # Looping over all elements in each edge.
             for j in range(edge['number_of_elements']):
                 # Gets the source and target node displacement of the current element.
-                element_node_displacement = np.ravel(edge_vertex_and_node_displacements[i][j:j+3])
+                element_node_displacement = np.ravel(edge_vertex_and_node_displacements[i][j:j+2])
                 # Gets the nominal position of the source and target nodes of the current element.
                 element_source_position = edge['edge_vertices_coordinates'][j]
                 element_target_position = edge['edge_vertices_coordinates'][j+1]
@@ -465,13 +463,13 @@ if __name__ == "__main__":
         number_of_elements=1, 
         E_modulus=1e11, 
         shear_modulus=1e11,
-        primary_moment_of_area=8.33e-10,
-        secondary_moment_of_area=8.33e-10,
+        primary_moment_of_area=1e-9,
+        secondary_moment_of_area=1e-9,
         polar_mass_moment_of_inertia=5,
         density=1, 
         cross_sectional_area=0.01**2, 
         coordinates=[[0, 0, 0], [1, 0, 0]],
-        edge_roll=0
+        edge_roll=0,
         point_mass=0.3938477,
         point_mass_id=1)
 
@@ -480,14 +478,14 @@ if __name__ == "__main__":
     mass_matrix, stiffness_matrix = beam_lattice.get_system_level_matrices()
     displaced_shape_points = beam_lattice.get_displaced_shape_position({1: [0, 0, -10, 0, 0, 0]}, (0,))
 
+    displaced_shape_points = beam_lattice.get_displaced_shape_position({2: [10, 0, 10, 0, 0, 0]}, (0,))
+    
     for displaced_shape_point in displaced_shape_points:
         ax.plot(displaced_shape_point[:, 0], displaced_shape_point[:, 1], displaced_shape_point[:, 2], linewidth=2.0, linestyle='--')
 
-    ax.set_aspect('equal')
     ax.axis('equal')
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('z')
     ax.grid()
-    plt.legend()
     plt.show()
