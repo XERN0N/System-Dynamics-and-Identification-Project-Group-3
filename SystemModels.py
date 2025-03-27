@@ -38,7 +38,7 @@ class Beam_Lattice:
     def add_beam_edge(self, number_of_elements: int, E_modulus: npt.ArrayLike, shear_modulus: npt.ArrayLike, primary_moment_of_area: npt.ArrayLike, 
                       secondary_moment_of_area: npt.ArrayLike, polar_mass_moment_of_inertia: npt.ArrayLike, density: npt.ArrayLike, 
                       cross_sectional_area: npt.ArrayLike, vertex_IDs: Collection[int, int] | int | None = None, coordinates: npt.ArrayLike | None = None, 
-                      edge_roll: float | None = None, point_mass: float | None = None, point_mass_id: int | None = None) -> None: 
+                      edge_polar_rotation: float | None = None) -> None:
         """
         Adds an edge to the graph containing a straight set of beam elements or just a single beam elemet.
 
@@ -77,10 +77,9 @@ class Beam_Lattice:
         coordinates : array_like, optional
             The coordinate set(s) of the vertices not specified using the parameter 'vertex_IDs'. Can have either shape (3,) or (2, 3) for 
             isolated beams. Ignored if both vertices are defined using 'vertex_IDs'.
-        edge_roll : float, optional
-            Rotation of the beam along the beam axis [rad]. Default 0.
-        point_mass: Mass of the point mass added to the system.
-        point_mass_id: Vertex ID of the added point mass. 
+        edge_polar_rotation : float, optional
+            Rotation of the beam along the beam axis [rad]. The order of rotation is polar-primary-secondary (x-z-y) so this is the first
+            rotation applied to the beam. Default 0.
         """
         # Creates the start and end vertices based on the given combination of 'vertex_IDs' and 'coordinates'.
         if isinstance(vertex_IDs, Collection):
@@ -92,7 +91,6 @@ class Beam_Lattice:
             coordinates = np.asarray(coordinates)
             if coordinates.shape == (3,):
                 end_vertex = self.graph.add_vertex(coordinates=coordinates)
-                end_vertex_id = end_vertex.index
             else:
                 raise ValueError(f"'coordinates' vector have shape {coordinates.shape} but expected shape (3,) when specifying 1 vertex ID.")
             start_vertex = self.graph.vs[vertex_IDs]
@@ -178,8 +176,6 @@ class Beam_Lattice:
             edge_mass_matrix += element_pickoff_operator.T @ element_mass_matrix @ element_pickoff_operator
             edge_stiffness_matrix += element_pickoff_operator.T @ element_stiffness_matrix @ element_pickoff_operator
         
-        
-
         # Rotates the mass and stiffness matrices to the global context.
         edge_primary_angle_cos, edge_primary_angle_sin = edge_vector[:2] / np.linalg.norm(edge_vector[:2]) if not np.array_equal(edge_vector[:2], (0, 0)) else (1.0, 0.0)
         edge_secondary_angle_cos, edge_secondary_angle_sin = (np.linalg.norm(edge_vector[:2]), -edge_vector[2]) / np.linalg.norm(edge_vector)
@@ -190,8 +186,8 @@ class Beam_Lattice:
                                               [                        0, 1,                        0],
                                               [-edge_secondary_angle_sin, 0, edge_secondary_angle_cos]])
         polar_rotation_matrix = np.array([[1,                           0,                            0],
-                                          [0, np.cos(edge_roll), -np.sin(edge_roll)],
-                                          [0, np.sin(edge_roll),  np.cos(edge_roll)]])
+                                          [0, np.cos(edge_polar_rotation), -np.sin(edge_polar_rotation)],
+                                          [0, np.sin(edge_polar_rotation),  np.cos(edge_polar_rotation)]])
         rotational_matrix = secondary_rotation_matrix @ primary_rotation_matrix @ polar_rotation_matrix
         transformation_matrix = block_diag(*(rotational_matrix.T,)*(2*(number_of_elements+1)))
         edge_mass_matrix = transformation_matrix.T @ edge_mass_matrix @ transformation_matrix
@@ -203,8 +199,6 @@ class Beam_Lattice:
                               [  0,               0, 1-3*x**2+2*x**3, 0, -x*L+2*L*x**2-L*x**3,                   0, 0,             0, 3*x**2-2*x**3, 0, L*x**2-L*x**3,              0]])
             return rotational_matrix @ shape @ block_diag(*(rotational_matrix.T,)*4)
         
-
-
         # Adds the beam into the graph.
         self.graph.add_edge(start_vertex, end_vertex, 
                             edge_mass_matrix=edge_mass_matrix, 
@@ -212,32 +206,6 @@ class Beam_Lattice:
                             number_of_elements=number_of_elements,
                             shape_function=shape_function,
                             edge_vertices_coordinates=edge_vertices_coordinates)
-        
-                        # Optionally add a point mass to the structure
-        if point_mass is not None and point_mass_id is not None:
-            self.add_point_mass(point_mass_id, point_mass)
-
-    def add_point_mass(self, vertex_ID: int, mass: float) -> None:
-        """
-        Adds a point mass to a specific vertex in the beam structure.
-
-        Parameters
-        ----------
-        vertex_ID : int
-            The ID of the vertex where the point mass is applied.
-        mass : float
-            The mass value in kg.
-        """
-        if vertex_ID >= self.graph.vcount():
-            raise ValueError(f"Vertex ID {vertex_ID} does not exist in the graph.")
-
-        self.graph.vs[vertex_ID]['point_mass'] = mass
-
-        print(f"Vertices in graph: {self.graph.vcount()}")
-        for v in self.graph.vs:
-            print(f"Vertex {v.index}, coords={v['coordinates']}, point_mass={v.attributes().get('point_mass')}")
-
-
 
     @property
     def system_DOF(self) -> int:
@@ -281,14 +249,6 @@ class Beam_Lattice:
             system_stiffness_matrix += edge_pickoff_operator.T @ edge['edge_stiffness_matrix'] @ edge_pickoff_operator
             
             accumulative_edge_DOF += edge_DOF
-
-        for vertex in self.graph.vs:
-            if 'point_mass' in vertex.attributes() and vertex['point_mass'] is not None:
-                mass = vertex['point_mass']
-                vertex_ID = vertex.index
-                DOF_indices = np.arange(6 * vertex_ID, 6 * vertex_ID + 3)
-                system_mass_matrix[np.ix_(DOF_indices, DOF_indices)] += mass * np.eye(3)
-
 
         return system_mass_matrix, system_stiffness_matrix
 
@@ -468,15 +428,23 @@ if __name__ == "__main__":
         polar_mass_moment_of_inertia=5,
         density=1, 
         cross_sectional_area=0.01**2, 
-        coordinates=[[0, 0, 0], [1, 0, 0]],
-        edge_roll=0,
-        point_mass=0.3938477,
-        point_mass_id=1)
+        coordinates=[[0, 0, 0], [0, 0, 1]],
+        edge_polar_rotation=0
+    )
 
-
-    # Recalculate the system matrices with the added mass
-    mass_matrix, stiffness_matrix = beam_lattice.get_system_level_matrices()
-    displaced_shape_points = beam_lattice.get_displaced_shape_position({1: [0, 0, -10, 0, 0, 0]}, (0,))
+    beam_lattice.add_beam_edge(
+        number_of_elements=5, 
+        E_modulus=1e11, 
+        shear_modulus=1e11,
+        primary_moment_of_area=1e-9,
+        secondary_moment_of_area=0.1e-9,
+        polar_mass_moment_of_inertia=5,
+        density=1, 
+        cross_sectional_area=0.01**2, 
+        coordinates=(0, 1, 1),
+        vertex_IDs=1,
+        edge_polar_rotation=np.pi/2
+    )
 
     displaced_shape_points = beam_lattice.get_displaced_shape_position({2: [10, 0, 10, 0, 0, 0]}, (0,))
     
