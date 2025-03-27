@@ -1,3 +1,5 @@
+hej = 1
+
 import numpy as np
 import numpy.typing as npt
 import igraph as ig
