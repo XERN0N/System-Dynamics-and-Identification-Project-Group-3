@@ -82,10 +82,10 @@ class Beam_Lattice:
         edge_polar_rotation : float, optional
             Rotation of the beam along the beam axis [rad]. The order of rotation is polar-primary-secondary (x-z-y) so this is the first
             rotation applied to the beam. Default 0.
-        point_mass : float, optional
-            Point mass....
-        point_mass_id : int
-            vertex ID of the point mass. 
+        rigid_body_mass : float, optional
+            rigid body mass. 
+        rigid_body_vertex : int
+            vertex ID of the rigid body mass. 
         """
         # Creates the start and end vertices based on the given combination of 'vertex_IDs' and 'coordinates'.
         if isinstance(vertex_IDs, Collection):
