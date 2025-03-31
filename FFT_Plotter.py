@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import fft, fftfreq
+from scipy.integrate import cumulative_trapezoid
 import tkinter as tk
 from tkinter import filedialog
 
@@ -44,12 +45,22 @@ def find_peak_frequencies(freqs, mags, num_peaks=4):
     peak_idx = np.argmax(peak_mags)
     return peak_freqs, peak_mags, peak_freqs[peak_idx], peak_mags[peak_idx]
 
+def Signal_integration(Desired_signal, Provided_signal, delta_t):
+    #Define the desired signal and integrate accordingly
+    if Desired_signal == "Velocity":
+        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t) #integrating once
+    elif Desired_signal == "Displacement":
+        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t)  #trapezoid(trapezoid(Provided_signal, dx=delta_t), dx=delta_t) #integrating twice
+    else:
+        raise ValueError(f"Invalid signal type: {Desired_signal}")
+
+    return Integrated_signal
 
 def plot_fft_results(file_name, fft_results, delta_t):
-    """Plots the FFT results for each sensor."""
+    #Plots the FFT results for each sensor.
     plt.figure(figsize=(12, 6))
     colors = ['b', 'r', 'g', 'm']
-
+    #For-loop to take each sensor's FFT results and plot them
     for i, (freqs, mags, peaks_f, peaks_m) in enumerate(fft_results):
         label = f"Sensor {i}"
         plt.plot(freqs, mags, label=label, color=colors[i])
@@ -64,6 +75,34 @@ def plot_fft_results(file_name, fft_results, delta_t):
     plt.tight_layout()
     plt.show()
 
+def plot_signal(file_name, Displacement_signal, Velocity_signal, time):
+    #Plotting relevant signals
+    plt.figure(figsize=(12, 6))
+    colors = ['b', 'r', 'g', 'm']
+
+    #for-loop to take each sensor's Displacement and Velocity signals and plot them
+
+
+    for i in range(4):
+        plt.subplot(2, 1, 1) # Plot the Displacement signal
+        plt.plot(time, Displacement_signal[i])
+        plt.xlabel("Time (s)")
+        plt.ylabel("Displacement (m)")
+        plt.title(f"Displacement of Sensor {i} - {file_name}")
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+        plt.subplot(2, 1, 2) # Plot the Velocity signal
+        plt.plot(time, Velocity_signal[i])
+        plt.xlabel("Time (s)")
+        plt.ylabel("Velocity (m/s)")
+        plt.title(f"Velocity of Sensor {i} - {file_name}")
+        plt.grid()
+        plt.legend()
+    plt.tight_layout()
+    plt.show()   
+
 
 def process_file(file_path):
     """Handles reading, processing, and plotting for one file."""
@@ -73,20 +112,31 @@ def process_file(file_path):
         return
 
     time = data.iloc[:, 4].values
-    delta_t = np.mean(np.diff(time))
+    delta_t = data.iloc[:, 6].values
 
+    Displacement_signal = []
+    Velocity_signal = []
     fft_results = []
 
     for i in range(4):
         signal = data.iloc[:, i].values
+
+        #Calulate the integrated signals displacement and velocities
+        displacement = Signal_integration("Displacement", signal, delta_t)
+        velocity = Signal_integration("Velocity", signal, delta_t)
+        
+        Displacement_signal.append(displacement)
+        Velocity_signal.append(velocity)
+
+        #Calulate the FFT of the signal
         freqs, mags = compute_fft(signal, delta_t)
         peak_freqs, peak_mags, peak_x, peak_y = find_peak_frequencies(freqs, mags)
 
         print(f"Sensor {i}: Peak Frequency = {peak_x:.2f} Hz, Peak Amplitude = {peak_y:.3f}")
         fft_results.append((freqs, mags, peak_freqs, peak_mags))
 
+    plot_signal(os.path.basename(file_path), Displacement_signal, Velocity_signal, time=time)
     plot_fft_results(os.path.basename(file_path), fft_results, delta_t)
-
 
 def main():
     folder_path = select_data_folder()
@@ -102,6 +152,7 @@ def main():
     for file in file_list:
         file_path = os.path.join(folder_path, file)
         process_file(file_path)
+
 
 
 if __name__ == "__main__":
