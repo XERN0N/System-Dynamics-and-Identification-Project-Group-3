@@ -48,9 +48,9 @@ def find_peak_frequencies(freqs, mags, num_peaks=4):
 def Signal_integration(Desired_signal, Provided_signal, delta_t):
     #Define the desired signal and integrate accordingly
     if Desired_signal == "Velocity":
-        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t) #integrating once
+        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t, initial=0) #integrating once
     elif Desired_signal == "Displacement":
-        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t)  #trapezoid(trapezoid(Provided_signal, dx=delta_t), dx=delta_t) #integrating twice
+        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t, initial=0)  #integrating twice
     else:
         raise ValueError(f"Invalid signal type: {Desired_signal}")
 
@@ -81,25 +81,21 @@ def plot_signal(file_name, Displacement_signal, Velocity_signal, time):
     colors = ['b', 'r', 'g', 'm']
 
     #for-loop to take each sensor's Displacement and Velocity signals and plot them
-
-
     for i in range(4):
-        plt.subplot(2, 1, 1) # Plot the Displacement signal
-        plt.plot(time, Displacement_signal[i])
-        plt.xlabel("Time (s)")
-        plt.ylabel("Displacement (m)")
-        plt.title(f"Displacement of Sensor {i} - {file_name}")
-        plt.grid()
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
-        plt.subplot(2, 1, 2) # Plot the Velocity signal
+        plt.subplot(2, 1, 1) # Plot the Velocity signal
         plt.plot(time, Velocity_signal[i])
         plt.xlabel("Time (s)")
         plt.ylabel("Velocity (m/s)")
         plt.title(f"Velocity of Sensor {i} - {file_name}")
         plt.grid()
-        plt.legend()
+        plt.legend(labels= f"Sensor {i}")
+        plt.subplot(2, 1, 2) # Plot the Displacement signal
+        plt.plot(time, Displacement_signal[i])
+        plt.xlabel("Time (s)")
+        plt.ylabel("Displacement (m)")
+        plt.title(f"Displacement of Sensor {i} - {file_name}")
+        plt.grid()
+        plt.legend(labels=f"Sensor {i}")
     plt.tight_layout()
     plt.show()   
 
@@ -112,8 +108,8 @@ def process_file(file_path):
         return
 
     time = data.iloc[:, 4].values
-    delta_t = data.iloc[:, 6].values
-
+    delta_t = data.iloc[1, 6]/1000000  # Extract the first valid index of column 6 to get constant dt
+    print(delta_t)
     Displacement_signal = []
     Velocity_signal = []
     fft_results = []
@@ -122,11 +118,11 @@ def process_file(file_path):
         signal = data.iloc[:, i].values
 
         #Calulate the integrated signals displacement and velocities
-        displacement = Signal_integration("Displacement", signal, delta_t)
         velocity = Signal_integration("Velocity", signal, delta_t)
+        displacement = Signal_integration("Displacement", velocity, delta_t)
         
-        Displacement_signal.append(displacement)
         Velocity_signal.append(velocity)
+        Displacement_signal.append(displacement)
 
         #Calulate the FFT of the signal
         freqs, mags = compute_fft(signal, delta_t)
