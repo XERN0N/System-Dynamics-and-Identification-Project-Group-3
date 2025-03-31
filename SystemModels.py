@@ -182,6 +182,26 @@ class Beam_Lattice:
             edge_mass_matrix += element_pickoff_operator.T @ element_mass_matrix @ element_pickoff_operator
             edge_stiffness_matrix += element_pickoff_operator.T @ element_stiffness_matrix @ element_pickoff_operator
         
+                # Add rigid body mass and inertia to the system mass matrix
+        for vertex in self.graph.vs:
+            if 'rigid_body_mass' in vertex.attributes() and 'rigid_body_inertia' in vertex.attributes():
+                mass = vertex['rigid_body_mass']
+                inertia = vertex['rigid_body_inertia']
+
+                if mass is None or inertia is None:
+                    continue  # Skip if any data is missing
+
+                if isinstance(inertia, list):
+                    inertia = np.diag(inertia)
+
+                M_rb = np.zeros((6, 6))
+                M_rb[:3, :3] = mass * np.eye(3)           # Translational mass
+                M_rb[3:, 3:] = np.asarray(inertia)        # Rotational inertia
+
+                DOF_indices = np.arange(6 * vertex.index, 6 * vertex.index + 6)
+                element_mass_matrix[np.ix_(DOF_indices, DOF_indices)] += M_rb
+
+
         # Rotates the mass and stiffness matrices to the global context.
         edge_primary_angle_cos, edge_primary_angle_sin = edge_vector[:2] / np.linalg.norm(edge_vector[:2]) if not np.array_equal(edge_vector[:2], (0, 0)) else (1.0, 0.0)
         edge_secondary_angle_cos, edge_secondary_angle_sin = (np.linalg.norm(edge_vector[:2]), -edge_vector[2]) / np.linalg.norm(edge_vector)
@@ -285,26 +305,6 @@ class Beam_Lattice:
             system_stiffness_matrix += edge_pickoff_operator.T @ edge['edge_stiffness_matrix'] @ edge_pickoff_operator
             
             accumulative_edge_DOF += edge_DOF
-
-                # Add rigid body mass and inertia at vertices
-        for vertex in self.graph.vs:
-            vertex_ID = vertex.index
-            base_idx = 6 * vertex_ID
-
-            # Translational mass
-            if 'rigid_body_mass' in vertex.attributes() and vertex['rigid_body_mass'] is not None:
-                mass = vertex['rigid_body_mass']
-                translational_DOFs = np.arange(base_idx, base_idx + 3)
-                system_mass_matrix[np.ix_(translational_DOFs, translational_DOFs)] += mass * np.eye(3)
-
-            # Rotational inertia
-            if 'rigid_body_inertia' in vertex.attributes() and vertex['rigid_body_inertia'] is not None:
-                inertia_tensor = np.asarray(vertex['rigid_body_inertia'])
-                if inertia_tensor.shape != (3, 3):
-                    raise ValueError(f"Inertia tensor for vertex {vertex_ID} must be shape (3, 3)")
-                rotational_DOFs = np.arange(base_idx + 3, base_idx + 6)
-                system_mass_matrix[np.ix_(rotational_DOFs, rotational_DOFs)] += inertia_tensor
-
 
         return system_mass_matrix, system_stiffness_matrix
 
@@ -466,28 +466,6 @@ class Beam_Lattice:
 
         return edge_point_displaced_positions
 
-    def add_rigid_body(self, vertex_ID: int, mass: float, inertia_tensor: npt.ArrayLike) -> None:
-        """
-        Adds a rigid body (mass + moment of inertia) to a specific vertex in the beam structure.
-
-        Parameters
-        ----------
-        vertex_ID : int
-            The ID of the vertex where the rigid body is applied.
-        mass : float
-            The mass in kg.
-        inertia_tensor : array_like
-            A (3, 3) moment of inertia tensor in kg*m^2 for the vertex (rotational part).
-        """
-        if vertex_ID >= self.graph.vcount():
-            raise ValueError(f"Vertex ID {vertex_ID} does not exist in the graph.")
-        inertia_tensor = np.asarray(inertia_tensor)
-        if inertia_tensor.shape != (3, 3):
-            raise ValueError(f"Inertia tensor must be shape (3, 3), but got {inertia_tensor.shape}")
-        
-        self.graph.vs[vertex_ID]['rigid_body_mass'] = mass
-        self.graph.vs[vertex_ID]['rigid_body_inertia'] = inertia_tensor
-
 # Example.
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
@@ -541,3 +519,5 @@ if __name__ == "__main__":
     ax.set_zlabel('z')
     ax.grid()
     plt.show()
+
+
