@@ -36,9 +36,11 @@ class Beam_Lattice:
         self.graph = ig.Graph()
 
     def add_beam_edge(self, number_of_elements: int, E_modulus: npt.ArrayLike, shear_modulus: npt.ArrayLike, primary_moment_of_area: npt.ArrayLike, 
-                      secondary_moment_of_area: npt.ArrayLike, polar_mass_moment_of_inertia: npt.ArrayLike, density: npt.ArrayLike, 
-                      cross_sectional_area: npt.ArrayLike, vertex_IDs: Collection[int, int] | int | None = None, coordinates: npt.ArrayLike | None = None, 
-                      edge_polar_rotation: float | None = None) -> None:
+                  secondary_moment_of_area: npt.ArrayLike, polar_mass_moment_of_inertia: npt.ArrayLike, density: npt.ArrayLike, 
+                  cross_sectional_area: npt.ArrayLike, vertex_IDs: Collection[int, int] | int | None = None, coordinates: npt.ArrayLike | None = None, 
+                  edge_polar_rotation: float | None = None, rigid_body_mass: float | None = None, rigid_body_inertia: npt.ArrayLike | None = None, 
+                  rigid_body_vertex: int | None = None) -> None:
+
         """
         Adds an edge to the graph containing a straight set of beam elements or just a single beam elemet.
 
@@ -80,6 +82,10 @@ class Beam_Lattice:
         edge_polar_rotation : float, optional
             Rotation of the beam along the beam axis [rad]. The order of rotation is polar-primary-secondary (x-z-y) so this is the first
             rotation applied to the beam. Default 0.
+        point_mass : float, optional
+            Point mass....
+        point_mass_id : int
+            vertex ID of the point mass. 
         """
         # Creates the start and end vertices based on the given combination of 'vertex_IDs' and 'coordinates'.
         if isinstance(vertex_IDs, Collection):
@@ -207,12 +213,42 @@ class Beam_Lattice:
                             shape_function=shape_function,
                             edge_vertices_coordinates=edge_vertices_coordinates)
 
+        # Optionally add a rigid body (mass + inertia) to the structure
+        if rigid_body_mass is not None and rigid_body_inertia is not None and rigid_body_vertex is not None:
+            self.add_rigid_body(rigid_body_vertex, rigid_body_mass, rigid_body_inertia)
+
+
     @property
     def system_DOF(self) -> int:
         """
         The total DOF of the system.
         """
         return 6*(np.sum(self.graph.es['number_of_elements'], dtype=int) + self.graph.vcount() - self.graph.ecount())
+
+    
+    def add_rigid_body(self, vertex_ID: int, mass: float, inertia_tensor: npt.ArrayLike) -> None:
+        """
+        Adds a rigid body (mass + moment of inertia) to a specific vertex in the beam structure.
+
+        Parameters
+        ----------
+        vertex_ID : int
+            The ID of the vertex where the rigid body is applied.
+        mass : float
+            The mass in kg.
+        inertia_tensor : array_like
+            A (3, 3) moment of inertia tensor in kg*m^2 for the vertex (rotational part).
+        """
+        if vertex_ID >= self.graph.vcount():
+            raise ValueError(f"Vertex ID {vertex_ID} does not exist in the graph.")
+        inertia_tensor = np.asarray(inertia_tensor)
+        if inertia_tensor.shape != (3, 3):
+            raise ValueError(f"Inertia tensor must have shape (3, 3), but got {inertia_tensor.shape}")
+    
+        self.graph.vs[vertex_ID]['rigid_body_mass'] = mass
+        self.graph.vs[vertex_ID]['rigid_body_inertia'] = inertia_tensor
+
+
 
     def get_system_level_matrices(self) -> tuple[npt.NDArray, npt.NDArray]:
         """
@@ -249,6 +285,26 @@ class Beam_Lattice:
             system_stiffness_matrix += edge_pickoff_operator.T @ edge['edge_stiffness_matrix'] @ edge_pickoff_operator
             
             accumulative_edge_DOF += edge_DOF
+
+                # Add rigid body mass and inertia at vertices
+        for vertex in self.graph.vs:
+            vertex_ID = vertex.index
+            base_idx = 6 * vertex_ID
+
+            # Translational mass
+            if 'rigid_body_mass' in vertex.attributes() and vertex['rigid_body_mass'] is not None:
+                mass = vertex['rigid_body_mass']
+                translational_DOFs = np.arange(base_idx, base_idx + 3)
+                system_mass_matrix[np.ix_(translational_DOFs, translational_DOFs)] += mass * np.eye(3)
+
+            # Rotational inertia
+            if 'rigid_body_inertia' in vertex.attributes() and vertex['rigid_body_inertia'] is not None:
+                inertia_tensor = np.asarray(vertex['rigid_body_inertia'])
+                if inertia_tensor.shape != (3, 3):
+                    raise ValueError(f"Inertia tensor for vertex {vertex_ID} must be shape (3, 3)")
+                rotational_DOFs = np.arange(base_idx + 3, base_idx + 6)
+                system_mass_matrix[np.ix_(rotational_DOFs, rotational_DOFs)] += inertia_tensor
+
 
         return system_mass_matrix, system_stiffness_matrix
 
@@ -410,15 +466,38 @@ class Beam_Lattice:
 
         return edge_point_displaced_positions
 
+    def add_rigid_body(self, vertex_ID: int, mass: float, inertia_tensor: npt.ArrayLike) -> None:
+        """
+        Adds a rigid body (mass + moment of inertia) to a specific vertex in the beam structure.
+
+        Parameters
+        ----------
+        vertex_ID : int
+            The ID of the vertex where the rigid body is applied.
+        mass : float
+            The mass in kg.
+        inertia_tensor : array_like
+            A (3, 3) moment of inertia tensor in kg*m^2 for the vertex (rotational part).
+        """
+        if vertex_ID >= self.graph.vcount():
+            raise ValueError(f"Vertex ID {vertex_ID} does not exist in the graph.")
+        inertia_tensor = np.asarray(inertia_tensor)
+        if inertia_tensor.shape != (3, 3):
+            raise ValueError(f"Inertia tensor must be shape (3, 3), but got {inertia_tensor.shape}")
+        
+        self.graph.vs[vertex_ID]['rigid_body_mass'] = mass
+        self.graph.vs[vertex_ID]['rigid_body_inertia'] = inertia_tensor
+
 # Example.
 if __name__ == "__main__":
-    # Beam lattice example.
     import matplotlib.pyplot as plt
-    
+    import numpy as np
+
     ax = plt.subplot(projection='3d')
 
     beam_lattice = Beam_Lattice()
-    
+
+    # First beam: Vertical segment
     beam_lattice.add_beam_edge(
         number_of_elements=1, 
         E_modulus=1e11, 
@@ -432,6 +511,7 @@ if __name__ == "__main__":
         edge_polar_rotation=0
     )
 
+    # Second beam: Curved horizontal beam with rigid body at vertex 1
     beam_lattice.add_beam_edge(
         number_of_elements=5, 
         E_modulus=1e11, 
@@ -441,11 +521,15 @@ if __name__ == "__main__":
         polar_mass_moment_of_inertia=5,
         density=1, 
         cross_sectional_area=0.01**2, 
-        coordinates=(0, 1, 1),
         vertex_IDs=1,
-        edge_polar_rotation=np.pi/2
+        coordinates=(0, 1, 1),  # Custom behavior, make sure it works in your vertex logic
+        edge_polar_rotation=np.pi/2,
+        rigid_body_mass=0.3938477*3, # mass of plate in kg x 3 (3 plates)
+        rigid_body_inertia=np.diag([0.001, 0.001, 0.001]),  # Example moment of inertia in (Ixx, Iyy, Izz)
+        rigid_body_vertex=1
     )
 
+    # Apply a force on vertex 2 and fix vertex 0
     displaced_shape_points = beam_lattice.get_displaced_shape_position({2: [10, 0, 10, 0, 0, 0]}, (0,))
     
     for displaced_shape_point in displaced_shape_points:
