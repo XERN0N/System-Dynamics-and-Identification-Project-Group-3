@@ -326,10 +326,34 @@ class Beam_Lattice:
             else:
                 vertex_with_applied_force['force'] = force
 
-    def get_static_vertex_and_node_displacements(self) -> npt.NDArray:
+    def get_force_vector(self, include_fixed_vertices: bool = False, time: float = 0.0) -> npt.NDArray:
+        """
+        Calculates the force vector based on the given forces applied.
+
+        Parameters
+        ----------
+        time : float, optional
+            The time parameter for the force functions. 0.0 by default.
+        """
+        # Constructs the force vector.
+        force_vector = np.zeros(self.system_DOF)
+        for vertex in self.graph.vs:
+            if vertex['force'] is not None:
+                force_vector[6*vertex.index:6*vertex.index + 6] = vertex['force'](time)
+        if include_fixed_vertices:
+            return force_vector
+        else:
+            return np.delete(force_vector, self.fixed_DOFs)
+
+    def get_static_vertex_and_node_displacements(self, include_fixed_vertices: bool = False) -> npt.NDArray:
         """
         Gets the displacement for all vertices and nodes under a static load given by the first time step of the force functions. 
         The displaced position is not calculated.
+
+        Parameters
+        ----------
+        include_fixed_vertices : bool, optional
+            Whether or not to include the fixed vertices in the displacement output vector. False by default.
 
         Returns
         -------
@@ -340,25 +364,19 @@ class Beam_Lattice:
             according to the direction of the edge. Each vertex/nodal displacement is then orded by (x, y, z, phi_x, phi_y, phi_z) 
             displacement.
         """
-        # Raises an error if there are no fixed boundaries.
-        fixed_DOFs = self.fixed_DOFs
-
         # Gets the system level stiffness matrix.
         _, stiffness_matrix = self.get_system_level_matrices()
 
         # Constructs the force vector.
-        force_vector = np.zeros(self.system_DOF)
-        for vertex in self.graph.vs:
-            if vertex['force'] is not None:
-                force_vector[6*vertex.index:6*vertex.index + 6] = vertex['force'](0)
-        force_vector = np.delete(force_vector, fixed_DOFs)
+        force_vector = self.get_force_vector()
 
         # Calculates the displacements.
         displacements = np.linalg.inv(stiffness_matrix) @ force_vector
 
         # Inserts the fixed DOF back again.
-        for fixed_DOF in fixed_DOFs:
-            displacements = np.insert(displacements, fixed_DOF, 0.0)
+        if include_fixed_vertices:
+            for fixed_DOF in self.fixed_DOFs:
+                displacements = np.insert(displacements, fixed_DOF, 0.0)
         
         return displacements
 
@@ -415,7 +433,7 @@ class Beam_Lattice:
             edge. The coordinates are orded along the edge direction.
         """
         # Gets the displacement for all vertices and nodes.
-        vertex_and_node_displacements = self.get_static_vertex_and_node_displacements()
+        vertex_and_node_displacements = self.get_static_vertex_and_node_displacements(include_fixed_vertices=True)
         vertex_displacements, node_displacements = np.split(vertex_and_node_displacements, [6*self.graph.vcount()])
         # Initializes array for the displacements of all vertices and nodes along any edge in the order of the edge direction. 
         # Shape: (number of edges, number of vertex and nodes for the given edge).
