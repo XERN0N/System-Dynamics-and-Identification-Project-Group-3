@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.typing as npt
+from typing import Callable
 import igraph as ig
 from collections.abc import Collection
 from scipy.linalg import block_diag
@@ -29,8 +30,15 @@ class Beam_Lattice:
             vertex_attributes:
                 coordinates : numpy array
                     The coordinates of the vertex in the global context with shape (3,).
+                fixed : bool
+                    Whether or not the vertex have a fixed boundary condition applied to it.
+                force : None or Callable with float input and numpy array output
+                    The force function applied to the vertex with time as input and the force vector with shape (6,) as output.
+                    None if no force is applied.
     system_DOF : int
         The total DOF of the system.
+    fixed_DOFs : numpy array
+        A list of the DOF's that have a fixed boundary condition applied to.
     """
     def __init__(self) -> None:
         self.graph = ig.Graph()
@@ -81,6 +89,12 @@ class Beam_Lattice:
             Rotation of the beam along the beam axis [rad]. The order of rotation is polar-primary-secondary (x-z-y) so this is the first
             rotation applied to the beam. Default 0.
         """
+        # Additional parameters for the vertices.
+        additional_vertex_parameters = {
+            'fixed': False, 
+            'force': None
+        }
+
         # Creates the start and end vertices based on the given combination of 'vertex_IDs' and 'coordinates'.
         if isinstance(vertex_IDs, Collection):
             if len(vertex_IDs) != 3:
@@ -90,15 +104,15 @@ class Beam_Lattice:
         elif isinstance(vertex_IDs, int):
             coordinates = np.asarray(coordinates)
             if coordinates.shape == (3,):
-                end_vertex = self.graph.add_vertex(coordinates=coordinates)
+                end_vertex = self.graph.add_vertex(coordinates=coordinates, **additional_vertex_parameters)
             else:
                 raise ValueError(f"'coordinates' vector have shape {coordinates.shape} but expected shape (3,) when specifying 1 vertex ID.")
             start_vertex = self.graph.vs[vertex_IDs]
         else:
             coordinates = np.asarray(coordinates)
             if coordinates.shape == (2, 3):
-                start_vertex = self.graph.add_vertex(coordinates=coordinates[0])
-                end_vertex = self.graph.add_vertex(coordinates=coordinates[1])
+                start_vertex = self.graph.add_vertex(coordinates=coordinates[0], **additional_vertex_parameters)
+                end_vertex = self.graph.add_vertex(coordinates=coordinates[1], **additional_vertex_parameters)
             else:
                 raise ValueError(f"'Coordinates' have shape {coordinates.shape} but expected shape (2, 3) when not specifying 'vertex_IDs'")
 
@@ -199,13 +213,25 @@ class Beam_Lattice:
                               [  0,               0, 1-3*x**2+2*x**3, 0, -x*L+2*L*x**2-L*x**3,                   0, 0,             0, 3*x**2-2*x**3, 0, L*x**2-L*x**3,              0]])
             return rotational_matrix @ shape @ block_diag(*(rotational_matrix.T,)*4)
         
+        edge_parameters = {
+            'edge_mass_matrix': edge_mass_matrix,
+            'edge_stiffness_matrix': edge_stiffness_matrix,
+            'number_of_elements': number_of_elements,
+            'shape_function': shape_function,
+            'edge_vertices_coordinates': edge_vertices_coordinates
+        }
+
         # Adds the beam into the graph.
-        self.graph.add_edge(start_vertex, end_vertex, 
-                            edge_mass_matrix=edge_mass_matrix, 
-                            edge_stiffness_matrix=edge_stiffness_matrix,
-                            number_of_elements=number_of_elements,
-                            shape_function=shape_function,
-                            edge_vertices_coordinates=edge_vertices_coordinates)
+        self.graph.add_edge(start_vertex, end_vertex, **edge_parameters)
+
+    @property
+    def fixed_DOFs(self) -> npt.NDArray:
+        """
+        List of the DOF's that have a boundary condition applied to it.
+        """
+        if not np.any(self.graph.vs['fixed']):
+            raise ValueError("No vertices have been fixed yet.")
+        return np.ravel([6*fixed_vertex_ID + np.arange(6) for fixed_vertex_ID in np.flatnonzero(self.graph.vs['fixed'])])
 
     @property
     def system_DOF(self) -> int:
@@ -214,7 +240,7 @@ class Beam_Lattice:
         """
         return 6*(np.sum(self.graph.es['number_of_elements'], dtype=int) + self.graph.vcount() - self.graph.ecount())
 
-    def get_system_level_matrices(self, fixed_vertex_IDs: tuple[int] | None = None) -> tuple[tuple[npt.NDArray, npt.NDArray], tuple[int, ...] | None]:
+    def get_system_level_matrices(self) -> tuple[npt.NDArray, npt.NDArray]:
         """
         Calculates the system-level mass- and stiffness matrices by combining all edge mass- and stiffness matrices.
         
@@ -225,10 +251,9 @@ class Beam_Lattice:
 
         Returns
         -------
-        tuple[tuple[npt.NDArray, npt.NDArray], tuple[int, ...] | None]
-            The first tuple contains the system level matrices and the second contain the fixed DOFs (if given).
-            The first element in the first tuple is the system-level mass matrix and the second is the stiffness matrix. 
-            The order of the rows in each matrix is first vertices followed by the nodes. The vertices are by them selves orded by their
+        tuple of two numpy arrays
+            The first element  is the system-level mass matrix and the second is the stiffness matrix. The order of the 
+            rows in each matrix is first vertices followed by the nodes. The vertices are by them selves orded by their
             respective ID. The nodes are firstly ordered by their respective edge ID and secondly by the direction of the edge.
         """
         # Calculates the number of DOF in the entire system.
@@ -257,30 +282,54 @@ class Beam_Lattice:
             accumulative_edge_DOF += edge_DOF
 
         # Applies boundary conditions if present.
-        if fixed_vertex_IDs is not None:
-            fixed_DOFs = np.ravel([6*fixed_vertex_ID + np.arange(6) for fixed_vertex_ID in fixed_vertex_IDs])
+        if np.any(self.graph.vs['fixed']):
+            fixed_DOFs = self.fixed_DOFs
             system_mass_matrix = np.delete(system_mass_matrix, fixed_DOFs, axis=0)
             system_mass_matrix = np.delete(system_mass_matrix, fixed_DOFs, axis=1)
             system_stiffness_matrix = np.delete(system_stiffness_matrix, fixed_DOFs, axis=0)
             system_stiffness_matrix = np.delete(system_stiffness_matrix, fixed_DOFs, axis=1)
-        else:
-            fixed_DOFs = None
 
         # Damping ready stuff here.
 
-        return (system_mass_matrix, system_stiffness_matrix), fixed_DOFs
+        return system_mass_matrix, system_stiffness_matrix
 
-    def get_static_vertex_and_node_displacements(self, forces: dict[int, npt.ArrayLike], fixed_vertex_IDs: tuple[int, ...]) -> npt.NDArray:
+    def fix_vertices(self, fixed_vertex_IDs: Collection[int]) -> None:
         """
-        Gets the displacement for all vertices and nodes under a static load. The displaced position is not calculated.
+        Applies a fixed boundary condition to a given collection of vertices.
 
         Parameters
         ----------
-        forces : dict with int key and array_like value
-            The point forces applied to the system. The key values are the vertices where the point forces are applied and the
-            values must be an array with shape (6,).
-        fixed_vertex_IDs : tuple of int
-            The vertex IDs that will have a fixed boundary condition.
+        fixed_vertex_IDs : int
+            The ID of the vertices to be fixed.
+        """
+        for fixed_vertex_ID in fixed_vertex_IDs:
+            fixed_vertex = self.graph.vs[fixed_vertex_ID]
+            if fixed_vertex['force'] is None:
+                fixed_vertex['fixed'] = True
+            else:
+                raise ValueError(f"Vertex ID '{fixed_vertex_ID}' have a force applied to it and can therefore not be fixed.")
+
+    def add_forces(self, forces: dict[int, Callable[[float], float]]) -> None:
+        """
+        Adds force(s) to the system.
+
+        Parameters
+        ----------
+        forces : dict[int, Callable[[float], float]]
+            The force(s) applied to the vertices with vertex ID as the key and a callable as the value with time as input 
+            and the force as output with shape (6,).
+        """
+        for vertex_ID, force in forces.items():
+            vertex_with_applied_force = self.graph.vs[vertex_ID]
+            if vertex_with_applied_force['fixed']:
+                raise ValueError(f"Vertex ID '{vertex_ID}' is fixed and can therefore not have a force applied to it.")
+            else:
+                vertex_with_applied_force['force'] = force
+
+    def get_static_vertex_and_node_displacements(self) -> npt.NDArray:
+        """
+        Gets the displacement for all vertices and nodes under a static load given by the first time step of the force functions. 
+        The displaced position is not calculated.
 
         Returns
         -------
@@ -291,17 +340,17 @@ class Beam_Lattice:
             according to the direction of the edge. Each vertex/nodal displacement is then orded by (x, y, z, phi_x, phi_y, phi_z) 
             displacement.
         """
-        # Applies boundary conditions.
-        (_, stiffness_matrix), fixed_DOFs = self.get_system_level_matrices(fixed_vertex_IDs)
+        # Raises an error if there are no fixed boundaries.
+        fixed_DOFs = self.fixed_DOFs
+
+        # Gets the system level stiffness matrix.
+        _, stiffness_matrix = self.get_system_level_matrices()
 
         # Constructs the force vector.
         force_vector = np.zeros(self.system_DOF)
-        for vertex_ID, force in forces.items():
-            if vertex_ID in fixed_vertex_IDs:
-                raise ValueError(f"Vertex {vertex_ID} is fixed and cannot have a force applied to it.")
-            elif vertex_ID >= self.graph.vcount():
-                raise ValueError(f"Force is trying to be applied to vertex ID {vertex_ID} but this vertex doesn't exist.")
-            force_vector[6*vertex_ID:6*vertex_ID + 6] = np.asarray(force)
+        for vertex in self.graph.vs:
+            if vertex['force'] is not None:
+                force_vector[6*vertex.index:6*vertex.index + 6] = vertex['force'](0)
         force_vector = np.delete(force_vector, fixed_DOFs)
 
         # Calculates the displacements.
@@ -313,17 +362,9 @@ class Beam_Lattice:
         
         return displacements
 
-    def get_displaced_vertices_and_node_position(self, forces: dict[int, npt.ArrayLike], fixed_vertex_IDs: tuple[int, ...]) -> list[npt.NDArray]:
+    def get_displaced_vertices_and_node_position(self) -> list[npt.NDArray]:
         """
         Calculates the displaced position of each vertex and node in the system under a given static load.
-
-        Parameters
-        ----------
-        forces : dict with int key and array_like value
-            The point forces applied to the system. The key values are the vertices where the point forces are applied and the
-            values must be an array with shape (6,).
-        fixed_vertex_IDs : tuple of int
-            The vertex IDs that will have a fixed boundary condition.
 
         Returns
         -------
@@ -333,7 +374,7 @@ class Beam_Lattice:
             and target vertices of the edge.
         """
         # Gets the displacement for all vertices and nodes.
-        vertex_and_node_displacements = self.get_static_vertex_and_node_displacements(forces, fixed_vertex_IDs)
+        vertex_and_node_displacements = self.get_static_vertex_and_node_displacements()
         vertex_displacements, node_displacements = np.split(vertex_and_node_displacements, [6*self.graph.vcount()])
         # Initializes array for the displaced position of all vertices and nodes along any edge in the order of the edge direction. 
         # Shape: (number of edges, number of vertex and nodes for the given edge).
@@ -357,17 +398,12 @@ class Beam_Lattice:
             
         return vertex_and_node_displaced_positions
 
-    def get_displaced_shape_position(self, forces: dict[int, npt.ArrayLike], fixed_vertex_IDs: tuple[int, ...], resolution_per_element: int = 100) -> list[npt.NDArray]:
+    def get_displaced_shape_position(self, resolution_per_element: int = 100) -> list[npt.NDArray]:
         """
         Calculates the shape of each beam element.
 
         Parameters
         ----------
-        forces : dict with int key and array_like value
-            The point forces applied to the system. The key values are the vertices where the point forces are applied and the
-            values must be an array with shape (6,).
-        fixed_vertex_IDs : tuple of int
-            The vertex IDs that will have a fixed boundary condition.
         resolution_per_element : int, optional
             The number of points per element per edge (Default 100).
 
@@ -379,7 +415,7 @@ class Beam_Lattice:
             edge. The coordinates are orded along the edge direction.
         """
         # Gets the displacement for all vertices and nodes.
-        vertex_and_node_displacements = self.get_static_vertex_and_node_displacements(forces, fixed_vertex_IDs)
+        vertex_and_node_displacements = self.get_static_vertex_and_node_displacements()
         vertex_displacements, node_displacements = np.split(vertex_and_node_displacements, [6*self.graph.vcount()])
         # Initializes array for the displacements of all vertices and nodes along any edge in the order of the edge direction. 
         # Shape: (number of edges, number of vertex and nodes for the given edge).
@@ -431,9 +467,9 @@ if __name__ == "__main__":
     
     ax = plt.subplot(projection='3d')
 
-    beam_lattice = Beam_Lattice()
+    system = Beam_Lattice()
     
-    beam_lattice.add_beam_edge(
+    system.add_beam_edge(
         number_of_elements=1, 
         E_modulus=1e11, 
         shear_modulus=1e11,
@@ -446,7 +482,7 @@ if __name__ == "__main__":
         edge_polar_rotation=0
     )
 
-    beam_lattice.add_beam_edge(
+    system.add_beam_edge(
         number_of_elements=5, 
         E_modulus=1e11, 
         shear_modulus=1e11,
@@ -460,7 +496,10 @@ if __name__ == "__main__":
         edge_polar_rotation=np.pi/2
     )
 
-    displaced_shape_points = beam_lattice.get_displaced_shape_position({2: [10, 0, 10, 0, 0, 0]}, (0,))
+
+    system.add_forces({2: lambda t: [10, 0, 10, 0, 0, 0]})
+    system.fix_vertices((0,))
+    displaced_shape_points = system.get_displaced_shape_position()
     
     for displaced_shape_point in displaced_shape_points:
         ax.plot(displaced_shape_point[:, 0], displaced_shape_point[:, 1], displaced_shape_point[:, 2], linewidth=2.0, linestyle='--')
