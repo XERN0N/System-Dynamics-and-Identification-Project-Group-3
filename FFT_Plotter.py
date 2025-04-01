@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import fft, fftfreq
 from scipy.integrate import cumulative_trapezoid
+from scipy import signal as sig
 import tkinter as tk
 from tkinter import filedialog
 
@@ -62,7 +63,7 @@ def plot_fft_results(file_name, fft_results, delta_t):
     colors = ['b', 'r', 'g', 'm']
     #For-loop to take each sensor's FFT results and plot them
     for i, (freqs, mags, peaks_f, peaks_m) in enumerate(fft_results):
-        label = f"Sensor {i}"
+        label = f"Sensor {i+1}"
         plt.plot(freqs, mags, label=label, color=colors[i])
         plt.plot(peaks_f, peaks_m, 'o', color=colors[i])  # Highlight peaks
 
@@ -75,27 +76,36 @@ def plot_fft_results(file_name, fft_results, delta_t):
     plt.tight_layout()
     plt.show()
 
-def plot_signal(file_name, Displacement_signal, Velocity_signal, time):
+def plot_signal(file_name, Acceleration_signal, Velocity_signal, Displacement_signal, time):
     #Plotting relevant signals
     plt.figure(figsize=(12, 6))
     colors = ['b', 'r', 'g', 'm']
 
     #for-loop to take each sensor's Displacement and Velocity signals and plot them
     for i in range(4):
-        plt.subplot(2, 1, 1) # Plot the Velocity signal
-        plt.plot(time, Velocity_signal[i])
+        label = f"Sensor {i+1}"
+        plt.subplot(3, 1, 1) # Plot the Velocity signal
+        plt.plot(time, Acceleration_signal[i], label=label, color=colors[i])
+        plt.xlabel("Time (s)")
+        plt.ylabel("Acceleration (m/s^2)")
+        plt.title(f"Acceleration of Sensor {i} - {file_name}")
+        plt.grid()
+        plt.legend()
+        label = f"Sensor {i+1}"
+        plt.subplot(3, 1, 2) # Plot the Velocity signal
+        plt.plot(time, Velocity_signal[i], label=label, color=colors[i])
         plt.xlabel("Time (s)")
         plt.ylabel("Velocity (m/s)")
         plt.title(f"Velocity of Sensor {i} - {file_name}")
         plt.grid()
-        plt.legend(labels= f"Sensor {i}")
-        plt.subplot(2, 1, 2) # Plot the Displacement signal
-        plt.plot(time, Displacement_signal[i])
+        plt.legend()
+        plt.subplot(3, 1, 3) # Plot the Displacement signal
+        plt.plot(time, Displacement_signal[i], label=label, color=colors[i])
         plt.xlabel("Time (s)")
         plt.ylabel("Displacement (m)")
         plt.title(f"Displacement of Sensor {i} - {file_name}")
         plt.grid()
-        plt.legend(labels=f"Sensor {i}")
+        plt.legend()
     plt.tight_layout()
     plt.show()   
 
@@ -108,19 +118,26 @@ def process_file(file_path):
         return
 
     time = data.iloc[:, 4].values
-    delta_t = data.iloc[1, 6]/1000000  # Extract the first valid index of column 6 to get constant dt
-    print(delta_t)
+    delta_t = data.iloc[0, 6]/1000000  # Extract the first valid index of column 6 to get constant dt
+    Acceleration_signal = []
     Displacement_signal = []
     Velocity_signal = []
     fft_results = []
 
+    sos = sig.butter(2, 0.5, 'highpass', output='sos')
+    for i in range(4):
+        data.iloc[:, i] = sig.sosfilt(sos, data.iloc[:, i])
+
     for i in range(4):
         signal = data.iloc[:, i].values
+        mean = np.mean(signal)  # Calculate the mean value of the signal
+        signal -= mean  # Subtract the mean value from the signal
 
         #Calulate the integrated signals displacement and velocities
         velocity = Signal_integration("Velocity", signal, delta_t)
         displacement = Signal_integration("Displacement", velocity, delta_t)
         
+        Acceleration_signal.append(signal)
         Velocity_signal.append(velocity)
         Displacement_signal.append(displacement)
 
@@ -131,7 +148,7 @@ def process_file(file_path):
         print(f"Sensor {i}: Peak Frequency = {peak_x:.2f} Hz, Peak Amplitude = {peak_y:.3f}")
         fft_results.append((freqs, mags, peak_freqs, peak_mags))
 
-    plot_signal(os.path.basename(file_path), Displacement_signal, Velocity_signal, time=time)
+    plot_signal(os.path.basename(file_path), Acceleration_signal, Velocity_signal, Displacement_signal, time=time)
     plot_fft_results(os.path.basename(file_path), fft_results, delta_t)
 
 def main():
