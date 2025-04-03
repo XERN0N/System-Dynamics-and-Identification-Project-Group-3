@@ -293,13 +293,13 @@ class Beam_Lattice:
         # Damping ready stuff here.
         eigvecs, eigvals = eig(system_stiffness_matrix, system_mass_matrix)
         # Modal mass matrix.
-        Mt = eigvecs.T @ system_mass_matrix @ eigvecs
+        modal_mass_matrix = eigvecs.T @ system_mass_matrix @ eigvecs
         #norm_eigvecs = eigvecs @ np.diag(1/np.sqrt(np.diag(Mt)))
+        damping_ratio = 0.05
         # Modal damping matrix.
-        zeta = 0.05
-        Ct = 2*(np.diag(zeta * np.sqrt(Mt) * np.sqrt(np.diag(eigvals))))
+        modal_damping_matrix = 2*(np.diag(damping_ratio * np.sqrt(modal_mass_matrix) * np.sqrt(np.diag(eigvals))))
         # Damping matrix 
-        system_damping_matrix = eigvecs @ Ct @ eigvecs.T   
+        system_damping_matrix = eigvecs @ modal_damping_matrix @ eigvecs.T   
         
         return system_mass_matrix, system_stiffness_matrix, system_damping_matrix
     
@@ -532,12 +532,12 @@ if __name__ == "__main__":
         edge_polar_rotation=0
     )
 
-    output = system.get_eigen_freq()
 
 
     system.add_forces({1: lambda t: [0, 0, 0, 0, 0, 0]})
     system.fix_vertices((0,))
     displaced_shape_points = system.get_displaced_shape_position()
+    output = system.get_eigen_freq()
     
     for displaced_shape_point in displaced_shape_points:
         ax.plot(displaced_shape_point[:, 0], displaced_shape_point[:, 1], displaced_shape_point[:, 2], linewidth=2.0, linestyle='--')
