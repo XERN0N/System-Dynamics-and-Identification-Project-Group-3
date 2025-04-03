@@ -4,7 +4,7 @@ import numpy as np
 import numpy.typing as npt
 import igraph as ig
 from collections.abc import Collection
-from scipy.linalg import block_diag
+from scipy.linalg import block_diag, eig
 
 class Beam_Lattice:
     """
@@ -238,6 +238,7 @@ class Beam_Lattice:
         # Initializes the system level mass and stiffness matrices.
         system_mass_matrix = np.zeros((system_DOF, system_DOF))
         system_stiffness_matrix = system_mass_matrix.copy()
+        system_damping_matrix = system_mass_matrix.copy()
         # Initializes the column index for the first edge in the edge pickoff operator.
         accumulative_edge_DOF = 6*self.graph.vcount()
         # Loops over all edges to add each edge contribution to the system level matrices.
@@ -258,7 +259,7 @@ class Beam_Lattice:
             
             accumulative_edge_DOF += edge_DOF
 
-        # Applies boundary conditions if present.
+         # Applies boundary conditions if present.
         if fixed_vertex_IDs is not None:
             fixed_DOFs = np.ravel([6*fixed_vertex_ID + np.arange(6) for fixed_vertex_ID in fixed_vertex_IDs])
             system_mass_matrix = np.delete(system_mass_matrix, fixed_DOFs, axis=0)
@@ -269,8 +270,39 @@ class Beam_Lattice:
             fixed_DOFs = None
 
         # Damping ready stuff here.
+        eigvecs, eigvals = eig(system_stiffness_matrix, system_mass_matrix)
+        # Modal mass matrix.
+        Mt = eigvecs.T @ system_mass_matrix @ eigvecs
+        #norm_eigvecs = eigvecs @ np.diag(1/np.sqrt(np.diag(Mt)))
+        # Modal damping matrix.
+        zeta = 0.05
+        Ct = 2*(np.diag(zeta * np.sqrt(Mt) * np.sqrt(np.diag(eigvals))))
+        # Damping matrix 
+        system_damping_matrix = eigvecs @ Ct @ eigvecs.T   
+        
+        return (system_mass_matrix, system_stiffness_matrix, system_damping_matrix), fixed_DOFs
+    
+    def get_eigen_freq(self):
+        """
+        Calculates the eigen frequencies of the system.
 
-        return (system_mass_matrix, system_stiffness_matrix), fixed_DOFs
+        Returns
+        -------
+        numpy array
+            Sorted eigen frequencies of the system with shape (n,) where n is the number of eigen frequencies.
+            The eigen frequencies are sorted in ascending order, and converted to Hz.
+        """ 
+        # Gets the system level matrices.
+        (mass_matrix, stiffness_matrix, _),_= self.get_system_level_matrices()
+        # Calculates the eigenvalues and eigenvectors.
+        eigvals, _ = eig(stiffness_matrix, mass_matrix)
+        # Calculates the eigen frequencies.
+        eigen_freq = np.sqrt(np.abs(eigvals)) / (2*np.pi)
+        # Sorts the eigen frequencies and eigenvectors.
+        sort_indices = np.argsort(eigen_freq)
+        eigen_freq = eigen_freq[sort_indices]
+
+        return eigen_freq
 
     def get_static_vertex_and_node_displacements(self, forces: dict[int, npt.ArrayLike], fixed_vertex_IDs: tuple[int, ...]) -> npt.NDArray:
         """
@@ -293,8 +325,10 @@ class Beam_Lattice:
             according to the direction of the edge. Each vertex/nodal displacement is then orded by (x, y, z, phi_x, phi_y, phi_z) 
             displacement.
         """
+        (_, stiffness_matrix, _),_ = self.get_system_level_matrices()
+
         # Applies boundary conditions.
-        (_, stiffness_matrix), fixed_DOFs = self.get_system_level_matrices(fixed_vertex_IDs)
+        (_, stiffness_matrix,_), fixed_DOFs = self.get_system_level_matrices(fixed_vertex_IDs)
 
         # Constructs the force vector.
         force_vector = np.zeros(self.system_DOF)
@@ -437,35 +471,28 @@ if __name__ == "__main__":
     
     beam_lattice.add_beam_edge(
         number_of_elements=1, 
-        E_modulus=1e11, 
-        shear_modulus=1e11,
-        primary_moment_of_area=1e-9,
-        secondary_moment_of_area=1e-9,
-        polar_mass_moment_of_inertia=5,
-        density=1, 
-        cross_sectional_area=0.01**2, 
-        coordinates=[[0, 0, 0], [0, 0, 1]],
+        E_modulus=2.1*10**11, 
+        shear_modulus=7.9*10**10,
+        primary_moment_of_area=2.157*10**-8,
+        secondary_moment_of_area=1.113*10**-8,
+        polar_mass_moment_of_inertia=3.7*10**-8,
+        density=7850, 
+        cross_sectional_area=1.737*10**-4, 
+        coordinates=[[0, 0, 0], [0, 0, 1.7]],
         edge_polar_rotation=0
     )
 
-    beam_lattice.add_beam_edge(
-        number_of_elements=5, 
-        E_modulus=1e11, 
-        shear_modulus=1e11,
-        primary_moment_of_area=1e-9,
-        secondary_moment_of_area=0.1e-9,
-        polar_mass_moment_of_inertia=5,
-        density=1, 
-        cross_sectional_area=0.01**2, 
-        coordinates=(0, 1, 1),
-        vertex_IDs=1,
-        edge_polar_rotation=np.pi/2
-    )
+    output = beam_lattice.get_eigen_freq()
 
-    displaced_shape_points = beam_lattice.get_displaced_shape_position({2: [10, 0, 10, 0, 0, 0]}, (0,))
+    displaced_shape_points = beam_lattice.get_displaced_shape_position({1: [0, 0, 0, 0, 0, 0]}, (0,))
     
     for displaced_shape_point in displaced_shape_points:
         ax.plot(displaced_shape_point[:, 0], displaced_shape_point[:, 1], displaced_shape_point[:, 2], linewidth=2.0, linestyle='--')
+    (MM, KK,_),_ = beam_lattice.get_system_level_matrices()
+    eigvals, eigvecs = eig(KK, MM)
+
+    print(MM,KK)
+    print(output)
 
     ax.axis('equal')
     ax.set_xlabel('x')
