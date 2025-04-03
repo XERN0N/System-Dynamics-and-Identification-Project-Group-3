@@ -291,13 +291,13 @@ class Beam_Lattice:
             system_stiffness_matrix = np.delete(system_stiffness_matrix, fixed_DOFs, axis=1)
 
         # Damping ready stuff here.
-        eigvecs, eigvals = eig(system_stiffness_matrix, system_mass_matrix)
+        eigvals, eigvecs = eig(system_stiffness_matrix, system_mass_matrix)
         # Modal mass matrix.
         modal_mass_matrix = eigvecs.T @ system_mass_matrix @ eigvecs
         #norm_eigvecs = eigvecs @ np.diag(1/np.sqrt(np.diag(Mt)))
         damping_ratio = 0.05
         # Modal damping matrix.
-        modal_damping_matrix = 2*(np.diag(damping_ratio * np.sqrt(modal_mass_matrix) * np.sqrt(np.diag(eigvals))))
+        modal_damping_matrix = np.eye(len(eigvals)) * (2 * damping_ratio * np.sqrt(np.abs(eigvals)) * modal_mass_matrix)
         # Damping matrix 
         system_damping_matrix = eigvecs @ modal_damping_matrix @ eigvecs.T   
         
