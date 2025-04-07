@@ -4,6 +4,7 @@ from typing import Callable
 import igraph as ig
 from collections.abc import Collection
 from scipy.linalg import block_diag, eig
+from warnings import deprecated
 
 class Beam_Lattice:
     """
@@ -341,13 +342,13 @@ class Beam_Lattice:
             else:
                 raise ValueError(f"Vertex ID '{fixed_vertex_ID}' have a force applied to it and can therefore not be fixed.")
 
-    def add_forces(self, forces: dict[int, Callable[[float], float]]) -> None:
+    def add_forces(self, forces: dict[int, Callable[[float], npt.ArrayLike]]) -> None:
         """
         Adds force(s) to the system.
 
         Parameters
         ----------
-        forces : dict[int, Callable[[float], float]]
+        forces : dict[int, Callable[[float], npt.ArrayLike]]
             The force(s) applied to the vertices with vertex ID as the key and a callable as the value with time as input 
             and the force as output with shape (6,).
         """
@@ -364,6 +365,8 @@ class Beam_Lattice:
 
         Parameters
         ----------
+        include_fixed_vertices : bool, optional
+            Whether or not to include the fixed vertices in the force output vector. False by default.
         time : float, optional
             The time parameter for the force functions. 0.0 by default.
         """
@@ -377,6 +380,7 @@ class Beam_Lattice:
         else:
             return np.delete(force_vector, self.fixed_DOFs)
 
+    @deprecated("Use Static from SystemSolver insted.")
     def get_static_vertex_and_node_displacements(self, include_fixed_vertices: bool = False) -> npt.NDArray:
         """
         Gets the displacement for all vertices and nodes under a static load given by the first time step of the force functions. 
@@ -412,6 +416,7 @@ class Beam_Lattice:
         
         return displacements
 
+    @deprecated("Use SystemSolver insted.")
     def get_displaced_vertices_and_node_position(self) -> list[npt.NDArray]:
         """
         Calculates the displaced position of each vertex and node in the system under a given static load.
@@ -448,6 +453,7 @@ class Beam_Lattice:
             
         return vertex_and_node_displaced_positions
 
+    @deprecated("Use SystemSolver insted.")
     def get_displaced_shape_position(self, resolution_per_element: int = 100) -> list[npt.NDArray]:
         """
         Calculates the shape of each beam element.
