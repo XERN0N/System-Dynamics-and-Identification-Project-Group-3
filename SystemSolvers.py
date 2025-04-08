@@ -58,14 +58,16 @@ class Solver(ABC):
             
         return graph_displaced_position
 
-    def get_displaced_shape_position(self, resolution_per_element: int = 100) -> list[npt.NDArray]:
+    def get_displaced_shape_position(self, scaling_factor: float = 1.0, resolution_per_element: int = 10) -> list[npt.NDArray]:
         """
         Calculates the shape of each beam element.
 
         Parameters
         ----------
+        scaling_factor : float, optional
+            The scaling factor for the displacements (Default 1.0).
         resolution_per_element : int, optional
-            The number of points per element per edge (Default 100).
+            The number of points per element per edge (Default 10).
 
         Returns
         -------
@@ -79,7 +81,7 @@ class Solver(ABC):
         edge_point_displaced_positions: list[npt.NDArray] = list()
         
         for t, displacement in enumerate(self.solution['displacements']):    
-            vertex_displacements, node_displacements = np.split(displacement, [6*self.beam_graph.graph.vcount()])
+            vertex_displacements, node_displacements = np.split(scaling_factor * displacement, [6*self.beam_graph.graph.vcount()])
             # Calculates the normalized distances along any element where the position of the displaced point will be evaluated.
             normalized_distances_along_element = np.linspace(0, 1, resolution_per_element)
             accumulative_edge_DOF = 0
@@ -231,7 +233,7 @@ if __name__ == "__main__":
     system = Beam_Lattice()
 
     system.add_beam_edge(
-        number_of_elements=5,
+        number_of_elements=1,
         E_modulus=2.1e11,
         shear_modulus=7.9e10,
         primary_moment_of_area=2.157e-8,
@@ -243,19 +245,34 @@ if __name__ == "__main__":
         edge_polar_rotation=0
     )
 
+    system.add_beam_edge(
+        number_of_elements=1,
+        E_modulus=2.1e11,
+        shear_modulus=7.9e10,
+        primary_moment_of_area=2.157e-8,
+        secondary_moment_of_area=2.157e-8,
+        polar_mass_moment_of_inertia=3.7e-8,
+        density=7850,
+        cross_sectional_area=1.737e-4,
+        coordinates=(1, 1, 0),
+        vertex_IDs=1,
+        edge_polar_rotation=0
+    )
+
     def delta_force(time: float) -> npt.ArrayLike:
         if time > 0.0:
             return [0, 0, 0, 0, 0, 0]
         else:
-            return [0, 1e3, 0, 0, 0, 0]
+            return [0, 0, 1e3, 0, 0, 0]
         
     system.add_forces({1: delta_force})
     system.fix_vertices((0,))
 
     end_time = 3000
     time_increment = 10
+    scaling_factor = 1
     initial_condition_solver = Static(system)
-    displaced_shape_points = Newmark(system, initial_condition_solver, end_time, time_increment).solve().get_displaced_shape_position()
+    displaced_shape_points = Newmark(system, initial_condition_solver, end_time, time_increment).solve().get_displaced_shape_position(scaling_factor)
 
     plot_lines = list()
     fig = plt.figure()
@@ -264,9 +281,9 @@ if __name__ == "__main__":
         plot_lines.append(ax.plot(displaced_shape_point[0, :, 0], displaced_shape_point[0, :, 1], displaced_shape_point[0, :, 2], linewidth=2.0, linestyle='--'))
 
     def update(frame):
-        for lines in plot_lines:
+        for i, lines in enumerate(plot_lines):
             for line in lines:
-                line.set_data_3d(*displaced_shape_point[frame, :].T)
+                line.set_data_3d(*displaced_shape_points[i][frame, :].T)
         ax.set_title(f"{frame*time_increment:.3f}")
         return plot_lines
 
