@@ -232,15 +232,21 @@ if __name__ == "__main__":
     
     system = Beam_Lattice()
 
+    beam_radius = 0.06
+    primary_moment_of_area = np.pi*beam_radius**4/4
+    secondary_moment_of_area = np.pi*beam_radius**4/4
+    torsional_constant = primary_moment_of_area + secondary_moment_of_area
+    cross_sectional_area = np.pi*beam_radius**2
+
     system.add_beam_edge(
         number_of_elements=1,
         E_modulus=2.1e11,
         shear_modulus=7.9e10,
-        primary_moment_of_area=2.157e-8,
-        secondary_moment_of_area=2.157e-8,
-        polar_moment_of_area=3.7e-8,
+        primary_moment_of_area=primary_moment_of_area,
+        secondary_moment_of_area=secondary_moment_of_area,
+        torsional_constant=torsional_constant,
         density=7850,
-        cross_sectional_area=1.737e-4,
+        cross_sectional_area=cross_sectional_area,
         coordinates=((0, 0, 0), (1, 0, 0)),
         edge_polar_rotation=0
     )
@@ -249,13 +255,27 @@ if __name__ == "__main__":
         number_of_elements=1,
         E_modulus=2.1e11,
         shear_modulus=7.9e10,
-        primary_moment_of_area=2.157e-8,
-        secondary_moment_of_area=2.157e-8,
-        polar_moment_of_area=3.7e-8,
+        primary_moment_of_area=primary_moment_of_area,
+        secondary_moment_of_area=secondary_moment_of_area,
+        torsional_constant=torsional_constant,
         density=7850,
-        cross_sectional_area=1.737e-4,
+        cross_sectional_area=cross_sectional_area,
         coordinates=(1, 1, 0),
         vertex_IDs=1,
+        edge_polar_rotation=0
+    )
+
+    system.add_beam_edge(
+        number_of_elements=1,
+        E_modulus=2.1e11,
+        shear_modulus=7.9e10,
+        primary_moment_of_area=primary_moment_of_area,
+        secondary_moment_of_area=secondary_moment_of_area,
+        torsional_constant=torsional_constant,
+        density=7850,
+        cross_sectional_area=cross_sectional_area,
+        coordinates=(0, 1, 0),
+        vertex_IDs=2,
         edge_polar_rotation=0
     )
 
@@ -263,12 +283,12 @@ if __name__ == "__main__":
         if time > 0.0:
             return [0, 0, 0, 0, 0, 0]
         else:
-            return [0, 0, 1e3, 0, 0, 0]
+            return [0, 0, 1e6, 0, 0, 0]
         
-    system.add_forces({1: delta_force})
-    system.fix_vertices((0,))
+    system.add_forces({2: delta_force})
+    system.fix_vertices((0, 3))
 
-    end_time = 3000
+    end_time = 10000
     time_increment = 10
     scaling_factor = 1
     initial_condition_solver = Static(system)
