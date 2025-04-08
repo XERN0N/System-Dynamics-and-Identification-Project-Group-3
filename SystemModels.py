@@ -45,7 +45,7 @@ class Beam_Lattice:
         self.graph = ig.Graph()
 
     def add_beam_edge(self, number_of_elements: int, E_modulus: npt.ArrayLike, shear_modulus: npt.ArrayLike, primary_moment_of_area: npt.ArrayLike, 
-                      secondary_moment_of_area: npt.ArrayLike, polar_mass_moment_of_inertia: npt.ArrayLike, density: npt.ArrayLike, 
+                      secondary_moment_of_area: npt.ArrayLike, polar_moment_of_area: npt.ArrayLike, density: npt.ArrayLike, 
                       cross_sectional_area: npt.ArrayLike, vertex_IDs: Collection[int, int] | int | None = None, coordinates: npt.ArrayLike | None = None, 
                       edge_polar_rotation: float | None = None) -> None:
         """
@@ -69,8 +69,8 @@ class Beam_Lattice:
             The secondary moment of area(s) for the beam (around the y-axis) with shape (n,). If the size of n is number_of_elements then the 
             values in the array corresponds to the value for each element of the beam. If n is a scaler all beam elements will have the same 
             value, and if n has two values, a linear spacing between the two values are used.
-        polar_mass_moment_of_inertia : array_like
-            The polar mass moment of inertia(s) for the beam (around the x-axis) with shape (n,). If the size of n is number_of_elements then the 
+        polar_moment_of_area : array_like
+            The polar moment of area for the beam (around the x-axis) with shape (n,). If the size of n is number_of_elements then the 
             values in the array corresponds to the value for each element of the beam. If n is a scaler all beam elements will have the same 
             value, and if n has two values, a linear spacing between the two values are used.
         density : array_like
@@ -119,7 +119,7 @@ class Beam_Lattice:
 
         # Determines the beam properties for each beam element.
         beam_properties = list(np.atleast_1d(E_modulus, shear_modulus, primary_moment_of_area, secondary_moment_of_area, 
-                                             polar_mass_moment_of_inertia, density, cross_sectional_area))
+                                             polar_moment_of_area, density, cross_sectional_area))
         for i, beam_property in enumerate(beam_properties):
             if len(beam_property) == 1:
                 beam_properties[i] = np.full(number_of_elements, beam_property[0])
@@ -127,7 +127,7 @@ class Beam_Lattice:
                 beam_properties[i] = np.linspace(beam_property[0], beam_property[1], number_of_elements)
             elif len(beam_property) > 2 and len(beam_property) != number_of_elements:
                 raise ValueError(f"One of the material property vectors have {len(beam_property)} elements but expected either 1, 2 or {number_of_elements} elements.")
-        E_modulus, shear_modulus, primary_moment_of_area, secondary_moment_of_area, polar_mass_moment_of_inertia, density, cross_sectional_area = beam_properties
+        E_modulus, shear_modulus, primary_moment_of_area, secondary_moment_of_area, polar_moment_of_area, density, cross_sectional_area = beam_properties
 
         # Determines the coordinates for the element vectors.
         edge_vector = end_vertex['coordinates'] - start_vertex['coordinates']
@@ -141,7 +141,7 @@ class Beam_Lattice:
         # Loops over all beam elements.
         for i in range(number_of_elements):
             # Short handing the beam properties.
-            E, G, I_z, I_y, I0, RHO, A = E_modulus[i], shear_modulus[i], primary_moment_of_area[i], secondary_moment_of_area[i], polar_mass_moment_of_inertia[i], density[i], cross_sectional_area[i]
+            E, G, I_z, I_y, I0, RHO, A = E_modulus[i], shear_modulus[i], primary_moment_of_area[i], secondary_moment_of_area[i], polar_moment_of_area[i], density[i], cross_sectional_area[i]
             J = I_y + I_z
             L = np.linalg.norm(edge_vector) / number_of_elements
             # Determines the mass matrix per beam element.
@@ -531,7 +531,7 @@ if __name__ == "__main__":
         shear_modulus=7.9*10**10,
         primary_moment_of_area=2.157*10**-8,
         secondary_moment_of_area=1.113*10**-8,
-        polar_mass_moment_of_inertia=3.7*10**-8,
+        polar_moment_of_area=3.7*10**-8,
         density=7850, 
         cross_sectional_area=1.737*10**-4, 
         coordinates=[[0, 0, 0], [0, 0, 1.7]],
