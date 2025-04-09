@@ -30,7 +30,7 @@ class Solver(ABC):
         -------
         list of numpy array
             A list of 3D arrays with the displaced positions of all vertices and nodes. Each element in the list corrsponds to an edge and each
-            array has the shape (timesteps, number_of_elements + 2, 6) where number_of_elements refer to the given edge and plus two to include the source
+            array has the shape (timesteps, number_of_elements + 1, 6) where number_of_elements refer to the given edge and plus one to include the source
             and target vertices of the edge.
         """
         # Initializes array for the displaced position of all vertices and nodes along any edge in the order of the edge direction.
@@ -44,15 +44,15 @@ class Solver(ABC):
                 # Calculates the number of DOF in the given edge excluding the DOF's in its target and source vertices.
                 edge_DOF = 6*(edge['number_of_elements']-1)
                 # If first time step, initialize the solution array.
-                if t == 0: graph_displaced_position.append(np.empty((len(self.solution['time']), edge['number_of_elements'] + 2, 6)))
+                if t == 0: graph_displaced_position.append(np.empty((len(self.solution['time']), edge['number_of_elements'] + 1, 6)))
                 # Calculates the displaced position for the source and target vertex of the edge.
-                source_vertex_displaced_position = vertex_displacements[6*edge.source : 6*edge.source + 6] + np.concatenate([self.beam_graph.graph.vs[edge.source]['coordinates'], [0]])
-                target_vertex_displaced_position = vertex_displacements[6*edge.target : 6*edge.target + 6] + np.concatenate([self.beam_graph.graph.vs[edge.target]['coordinates'], [0]])
+                source_vertex_displaced_position = vertex_displacements[6*edge.source : 6*edge.source + 6] + np.concatenate([self.beam_graph.graph.vs[edge.source]['coordinates'], [0, 0, 0]])
+                target_vertex_displaced_position = vertex_displacements[6*edge.target : 6*edge.target + 6] + np.concatenate([self.beam_graph.graph.vs[edge.target]['coordinates'], [0, 0, 0]])
                 # Gets all node displacements for the current edge.
                 edge_node_displacements = node_displacements[accumulative_edge_DOF : accumulative_edge_DOF + edge_DOF]
                 accumulative_edge_DOF += edge_DOF
                 # Calculates all node displaced positions for the current edge.
-                edge_node_displaced_positions = edge_node_displacements.reshape((-1, 6)) + np.column_stack((edge['edge_vertices_coordinates'][1:-1], np.zeros(edge['number_of_elements']-1)))
+                edge_node_displaced_positions = edge_node_displacements.reshape((-1, 6)) + np.column_stack((edge['edge_vertices_coordinates'][1:-1], np.zeros((edge['number_of_elements']-1, 3))))
                 # Combines the vertices and nodal displacements in the order of the edge direction.
                 graph_displaced_position[i][t] = np.vstack((source_vertex_displaced_position, edge_node_displaced_positions, target_vertex_displaced_position))
             
@@ -210,6 +210,7 @@ class Newmark(Solver):
         
         self.solution['displacements'][0] = initial_solution['displacements'][-1]
         self.solution['velocites'][0] = initial_solution['velocites'][-1]
+        # self.solution['accelerations'][0] = np.linalg.solve(mass, self.beam_graph.get_force_vector() - damping @ self.solution['velocites'][0] - stiffness @ self.solution['displacements'][0])        
         self.solution['accelerations'][0] = np.linalg.solve(mass, - damping @ self.solution['velocites'][0] - stiffness @ self.solution['displacements'][0])        
         
         for i, time in enumerate(time_steps):
@@ -232,14 +233,13 @@ if __name__ == "__main__":
     
     system = Beam_Lattice()
 
-    beam_radius = 0.06
-    primary_moment_of_area = np.pi*beam_radius**4/4
-    secondary_moment_of_area = np.pi*beam_radius**4/4
-    torsional_constant = primary_moment_of_area + secondary_moment_of_area
-    cross_sectional_area = np.pi*beam_radius**2
+    primary_moment_of_area = 1.94e-6
+    secondary_moment_of_area = 1.02e-6
+    torsional_constant = 2.29e-6
+    cross_sectional_area = 1.74e-4
 
     system.add_beam_edge(
-        number_of_elements=1,
+        number_of_elements=2,
         E_modulus=2.1e11,
         shear_modulus=7.9e10,
         primary_moment_of_area=primary_moment_of_area,
@@ -247,12 +247,12 @@ if __name__ == "__main__":
         torsional_constant=torsional_constant,
         density=7850,
         cross_sectional_area=cross_sectional_area,
-        coordinates=((0, 0, 0), (1, 0, 0)),
+        coordinates=((0, 0, 0), (0, 0, 1.7)),
         edge_polar_rotation=0
     )
 
     system.add_beam_edge(
-        number_of_elements=1,
+        number_of_elements=2,
         E_modulus=2.1e11,
         shear_modulus=7.9e10,
         primary_moment_of_area=primary_moment_of_area,
@@ -260,22 +260,8 @@ if __name__ == "__main__":
         torsional_constant=torsional_constant,
         density=7850,
         cross_sectional_area=cross_sectional_area,
-        coordinates=(1, 1, 0),
+        coordinates=(0, 1.7, 1.7),
         vertex_IDs=1,
-        edge_polar_rotation=0
-    )
-
-    system.add_beam_edge(
-        number_of_elements=1,
-        E_modulus=2.1e11,
-        shear_modulus=7.9e10,
-        primary_moment_of_area=primary_moment_of_area,
-        secondary_moment_of_area=secondary_moment_of_area,
-        torsional_constant=torsional_constant,
-        density=7850,
-        cross_sectional_area=cross_sectional_area,
-        coordinates=(0, 1, 0),
-        vertex_IDs=2,
         edge_polar_rotation=0
     )
 
@@ -283,22 +269,25 @@ if __name__ == "__main__":
         if time > 0.0:
             return [0, 0, 0, 0, 0, 0]
         else:
-            return [0, 0, 1e6, 0, 0, 0]
+            return [10, 0, 0, 0, 0, 0]
         
-    system.add_forces({2: delta_force})
-    system.fix_vertices((0, 3))
+    system.add_forces({1: delta_force})
+    system.fix_vertices((0, ))
 
-    end_time = 10000
-    time_increment = 10
-    scaling_factor = 1
+    end_time = 10
+    time_increment = 0.1
+    scaling_factor = 100
     initial_condition_solver = Static(system)
-    displaced_shape_points = Newmark(system, initial_condition_solver, end_time, time_increment).solve().get_displaced_shape_position(scaling_factor)
+    newmark_solver = Newmark(system, initial_condition_solver, end_time, time_increment)
+    displaced_shape_points = newmark_solver.solve().get_displaced_shape_position(scaling_factor)
+    with np.printoptions(linewidth=1000, precision=2):
+        print(np.array(newmark_solver.get_displaced_vertices_and_node_position()).shape)
 
     plot_lines = list()
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     for displaced_shape_point in displaced_shape_points:
-        plot_lines.append(ax.plot(displaced_shape_point[0, :, 0], displaced_shape_point[0, :, 1], displaced_shape_point[0, :, 2], linewidth=2.0, linestyle='--'))
+        plot_lines.append(ax.plot(displaced_shape_point[0, :, 0], displaced_shape_point[0, :, 1], displaced_shape_point[0, :, 2], linewidth=2.0))
 
     def update(frame):
         for i, lines in enumerate(plot_lines):
