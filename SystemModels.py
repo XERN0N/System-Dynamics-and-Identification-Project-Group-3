@@ -2,9 +2,10 @@ import numpy as np
 import numpy.typing as npt
 from typing import Callable
 import igraph as ig
-from collections.abc import Collection
+from collections.abc import Collection, Generator
 from scipy.linalg import block_diag, eig
 from warnings import deprecated
+from contextlib import contextmanager
 
 class Beam_Lattice:
     """
@@ -333,7 +334,7 @@ class Beam_Lattice:
 
         Parameters
         ----------
-        fixed_vertex_IDs : int
+        fixed_vertex_IDs : Collection of int
             The ID of the vertices to be fixed.
         """
         for fixed_vertex_ID in fixed_vertex_IDs:
@@ -343,13 +344,45 @@ class Beam_Lattice:
             else:
                 raise ValueError(f"Vertex ID '{fixed_vertex_ID}' have a force applied to it and can therefore not be fixed.")
 
-    def add_forces(self, forces: dict[int, Callable[[float], npt.ArrayLike]]) -> None:
+    def free_vertices(self, vertex_IDs: Collection[int] | None = None) -> None:
+        """
+        Frees fixed vertices.
+
+        Parameters
+        ----------
+        vertex_IDs : Collection of int, optional
+            The vertex IDs that should be freed. If it is already free it will be ignored.
+            If not specified all vertices are freed.
+        """
+        if vertex_IDs is None:
+                # If no vertices are specifed, frees all vertices.
+                self.graph.vs['fixed'] = False
+        else:
+            for vertex_ID in vertex_IDs:
+                # Frees the given vertices (if given).
+                self.graph.vs[vertex_ID]['fixed'] = False
+
+    @contextmanager
+    def fixed_vertices(self, fixed_vertex_IDs: Collection[int]) -> Generator[None, None, None]:
+        """
+        Context manager for fixed vertices which are freed afterwards.
+
+        Parameters
+        ----------
+        fixed_vertex_IDs : Collection of int
+            The ID of the vertices to be temporarely fixed.
+        """
+        self.fix_vertices(fixed_vertex_IDs)
+        yield
+        self.free_vertices(fixed_vertex_IDs)
+
+    def add_forces(self, forces: dict[int, Callable[[float], Collection[int]]]) -> None:
         """
         Adds force(s) to the system.
 
         Parameters
         ----------
-        forces : dict[int, Callable[[float], npt.ArrayLike]]
+        forces : dict[int, Callable[[float], Collection[int]]]
             The force(s) applied to the vertices with vertex ID as the key and a callable as the value with time as input 
             and the force as output with shape (6,).
         """
@@ -359,6 +392,39 @@ class Beam_Lattice:
                 raise ValueError(f"Vertex ID '{vertex_ID}' is fixed and can therefore not have a force applied to it.")
             else:
                 vertex_with_applied_force['force'] = force
+    
+    def remove_forces(self, vertex_IDs: Collection[int] | None = None) -> None:
+            """
+            Removes forces from vertices.
+
+            Parameters
+            ----------
+            vertex_IDs : Collection of int, optional
+                The list of vertex IDs to remove forces from. Vertices which already have no forces are ignored.
+                If not specified, all forces are removed.
+            """
+            if vertex_IDs is None:
+                # If no vertices are specifed, remove all forces.
+                self.graph.vs['force'] = None
+            else:
+                for vertex_ID in vertex_IDs:
+                    # Removes the force from the given vertices (if given).
+                    self.graph.vs[vertex_ID]['force'] = None
+
+    @contextmanager
+    def added_forces(self, forces: dict[int, Callable[[float], Collection[int]]]) -> Generator[None, None, None]:
+        """
+        Context manager for adding forces which are removed afterwards.
+
+        Parameters
+        ----------
+        forces : dict[int, Callable[[float], Collection[int]]]
+            The force(s) temporarely applied to the vertices with vertex ID as the key and a callable as the value with time as input 
+            and the force as output with shape (6,).
+        """
+        self.add_forces(forces)
+        yield
+        self.remove_forces(forces.keys())
 
     def get_force_vector(self, include_fixed_vertices: bool = False, time: float = 0.0) -> npt.NDArray:
         """
