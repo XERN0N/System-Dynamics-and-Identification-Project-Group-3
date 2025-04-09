@@ -182,7 +182,7 @@ class Newmark(Solver):
             Whether or not to include the fixed vertices in the displacement output vector. True by default.    
         """
         beta, gamma = self.integration_parameters
-        stiffness, mass, damping = self.beam_graph.get_system_level_matrices()
+        mass, stiffness, damping = self.beam_graph.get_system_level_matrices()
         
         effective_stiffness = 1/(beta*self.time_increment**2) * mass + gamma/(beta*self.time_increment) * damping + stiffness
 
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     cross_sectional_area = 1.74e-4
 
     system.add_beam_edge(
-        number_of_elements=2,
+        number_of_elements=1,
         E_modulus=2.1e11,
         shear_modulus=7.9e10,
         primary_moment_of_area=primary_moment_of_area,
@@ -247,21 +247,7 @@ if __name__ == "__main__":
         torsional_constant=torsional_constant,
         density=7850,
         cross_sectional_area=cross_sectional_area,
-        coordinates=((0, 0, 0), (0, 0, 1.7)),
-        edge_polar_rotation=0
-    )
-
-    system.add_beam_edge(
-        number_of_elements=2,
-        E_modulus=2.1e11,
-        shear_modulus=7.9e10,
-        primary_moment_of_area=primary_moment_of_area,
-        secondary_moment_of_area=secondary_moment_of_area,
-        torsional_constant=torsional_constant,
-        density=7850,
-        cross_sectional_area=cross_sectional_area,
-        coordinates=(0, 1.7, 1.7),
-        vertex_IDs=1,
+        coordinates=((0, 0, 0), (1.7, 0, 0)),
         edge_polar_rotation=0
     )
 
@@ -269,19 +255,17 @@ if __name__ == "__main__":
         if time > 0.0:
             return [0, 0, 0, 0, 0, 0]
         else:
-            return [10, 0, 0, 0, 0, 0]
+            return [0, 100, 0, 0, 0, 0]
         
     system.add_forces({1: delta_force})
     system.fix_vertices((0, ))
 
-    end_time = 10
-    time_increment = 0.1
-    scaling_factor = 100
+    end_time = 1
+    time_increment = 0.01
+    scaling_factor = 1000
     initial_condition_solver = Static(system)
     newmark_solver = Newmark(system, initial_condition_solver, end_time, time_increment)
     displaced_shape_points = newmark_solver.solve().get_displaced_shape_position(scaling_factor)
-    with np.printoptions(linewidth=1000, precision=2):
-        print(np.array(newmark_solver.get_displaced_vertices_and_node_position()).shape)
 
     plot_lines = list()
     fig = plt.figure()

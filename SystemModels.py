@@ -241,21 +241,22 @@ class Beam_Lattice:
         """
         return 6*(np.sum(self.graph.es['number_of_elements'], dtype=int) + self.graph.vcount() - self.graph.ecount())
 
-    def get_system_level_matrices(self) -> tuple[npt.NDArray, npt.NDArray]:
+    def get_system_level_matrices(self, include_fixed_vertices: bool = False) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
-        Calculates the system-level mass- and stiffness matrices by combining all edge mass- and stiffness matrices.
+        Calculates the system-level mass-, stiffness and damping matrices by combining all edge matrices.
         
         Parameters
         ----------
-        fixed_vertex_IDs : tuple of int
-            The vertex IDs that will have a fixed boundary condition.
+        include_fixed_vertices : bool, optional
+            Whether or not to include the fixed vertices in the matrices. False by default.
 
         Returns
         -------
         tuple of two numpy arrays
-            The first element  is the system-level mass matrix and the second is the stiffness matrix. The order of the 
-            rows in each matrix is first vertices followed by the nodes. The vertices are by them selves orded by their
-            respective ID. The nodes are firstly ordered by their respective edge ID and secondly by the direction of the edge.
+            The first element  is the system-level mass matrix, the second is the stiffness matrix and the third is the damping
+            matrix. The order of the rows in each matrix is first vertices followed by the nodes. The vertices are by them selves 
+            orded by their respective ID. The nodes are firstly ordered by their respective edge ID and secondly by the direction 
+            of the edge.
         """
         # Calculates the number of DOF in the entire system.
         system_DOF = self.system_DOF
@@ -284,7 +285,7 @@ class Beam_Lattice:
             accumulative_edge_DOF += edge_DOF
 
         # Applies boundary conditions if present.
-        if np.any(self.graph.vs['fixed']):
+        if not include_fixed_vertices:
             fixed_DOFs = self.fixed_DOFs
             system_mass_matrix = np.delete(system_mass_matrix, fixed_DOFs, axis=0)
             system_mass_matrix = np.delete(system_mass_matrix, fixed_DOFs, axis=1)
