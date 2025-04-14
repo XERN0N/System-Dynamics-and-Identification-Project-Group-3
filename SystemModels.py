@@ -97,8 +97,8 @@ class Beam_Lattice:
 
         # Creates the start and end vertices based on the given combination of 'vertex_IDs' and 'coordinates'.
         if isinstance(vertex_IDs, Collection):
-            if len(vertex_IDs) != 3:
-                raise ValueError(f"'vertex_IDs' expected 3 values when given as a collection.")
+            if len(vertex_IDs) != 2:
+                raise ValueError(f"'vertex_IDs' expected 2 values when given as a collection.")
             start_vertex = self.graph.vs[min(vertex_IDs)]
             end_vertex = self.graph.vs[max(vertex_IDs)]
         elif isinstance(vertex_IDs, int):
