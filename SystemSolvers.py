@@ -103,7 +103,7 @@ class Solver(ABC):
                 # Calculates the number of DOF in the given edge excluding the DOF's in its target and source vertices.
                 edge_DOF = 6*(edge['number_of_elements']-1)
                 # If first time step, initialize the solution array.
-                if t == 0: graph_displaced_position.append(np.empty((len(self.solution['time']), edge['number_of_elements'] + 1, 6)))
+                if t == 0: graph_displaced_position.append(np.empty((len(self.solution.time), edge['number_of_elements'] + 1, 6)))
                 # Calculates the displaced position for the source and target vertex of the edge.
                 source_vertex_displaced_position = vertex_displacements[6*edge.source : 6*edge.source + 6] + np.concatenate([self.beam_graph.graph.vs[edge.source]['coordinates'], [0, 0, 0]])
                 target_vertex_displaced_position = vertex_displacements[6*edge.target : 6*edge.target + 6] + np.concatenate([self.beam_graph.graph.vs[edge.target]['coordinates'], [0, 0, 0]])
