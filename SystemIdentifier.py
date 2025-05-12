@@ -2,6 +2,9 @@ import numpy as np
 from collections import deque 
 from scipy.linalg import svd,logm
 import matplotlib.pyplot as plt
+from SystemModels import Beam_Lattice
+from scipy.signal import find_peaks
+
 
 np.set_printoptions(threshold=np.inf)
 np.set_printoptions(linewidth=10000, suppress=True, precision=3)
@@ -86,7 +89,10 @@ def system_identifier(order_number,number_of_block_rows,output_data,time_step):
     pos_imag = np.imag(eigenvalues) > 0
     mask = (eigen_frequencies > 1e-8) & pos_imag
     f_Hz = eigen_frequencies[mask] / (2 * np.pi)
+    sorted_indices = np.argsort(f_Hz)
+    f_Hz = f_Hz[sorted_indices]
     damping_ratios = -np.real(eigenvalues[mask]) / eigen_frequencies[mask]
+    damping_ratios = damping_ratios[sorted_indices]
     
 
 
@@ -125,14 +131,162 @@ A = np.transpose(A)
 
 data = np.loadtxt('timeseries_gr3_FirstSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
 data2 = np.loadtxt('timeseries_gr3_SecondSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
-model_order_selector(1, 20, 30, data, 0.001079)
-ef, dr , phi = system_identifier(16, 40, data, 0.001079)
-print(ef)
-print(dr)
-print(phi)
+data3 = np.loadtxt('timeseries_gr3_FirstStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+data4 = np.loadtxt('timeseries_gr3_SecondStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+
+#model_order_selector(1, 20, 30, data, 0.001079)
+#ef, dr , phi = system_identifier(16, 40, data, 0.001079)
+#print(ef)
+#print(dr)
+#print(phi)
+
+def modalexpander(data, estimated_DOF, data_direction, number_of_elements):
+    if number_of_elements % 5 != 0:
+        raise ValueError("The number_of_elements must be divisible by 5.")
+    system = Beam_Lattice()
+    e = number_of_elements//5
+    system.add_beam_edge(
+        number_of_elements=number_of_elements, 
+        E_modulus=2.1*10**11, 
+        shear_modulus=7.9*10**10,
+        primary_moment_of_area=2.157*10**-8,
+        secondary_moment_of_area=1.113*10**-8,
+        torsional_constant=3.7*10**-8,
+        density=7850, 
+        cross_sectional_area=1.737*10**-4, 
+        coordinates=[[0, 0, 0], [0, 0, 1.7]],
+        edge_polar_rotation=0,
+        point_mass=1.31,
+        point_mass_moment_of_inertias=(0,0,0),
+        point_mass_location='end_vertex'
+    )
+    system.fix_vertices((0,))
+    eigfreq, eigvec, damped = system.get_modal_param()
+   
+    print(eigvec[:, :15])
+    print(eigfreq[:])
+    print(eigvec.shape)
+    if data_direction == 'x':
+        mu1 = [6*e,12*e,18*e,24*e]
+        col_pick = [0,2,4]
+        #start = 0
+        #end = 3
+    if data_direction == 'y':
+        mu1 = [7*e,13*e,19*e,25*e]
+        col_pick = [1,3,5]
+    mu2 = mu1[estimated_DOF]
+    mu1.remove(mu2)
+    
+    phi_mu1 = eigvec[mu1].T[col_pick].T
+    phi_mu2 = eigvec[mu2].T[col_pick].T
+    print(phi_mu1)
+    print(phi_mu2)
+    measured_data = data[:, [i for i in range(4) if i != estimated_DOF]].T
+    least_squares = np.linalg.pinv(phi_mu1) @ measured_data
+    
+    estimated_data = phi_mu2 @ least_squares
+
+    plt.plot(data[:, estimated_DOF], '--r', label='Measured')
+    plt.plot(estimated_data, 'k', label='Estimated', alpha=0.5)
+    plt.xlabel("Time step")
+    plt.ylabel("Acceleration")
+    plt.legend()
+    plt.title(f"Acceleration at DOF {mu2}")
+    plt.show() 
+
+def modelFRF(number_of_elements,accelerometer_location, axis):
+    def modelFRF(number_of_elements, accelerometer_location, axis):
+        """
+        Calculate and plot the Frequency Response Function (FRF) for a beam lattice system.
+        Parameters:
+        ----------
+        number_of_elements : int
+            This is the number of elements in the model.
+        accelerometer_location : int
+            1 is the topmost accelerometer.
+        axis : int
+            0 is along the x-axis, it follows as structured in BeamLattice.
+        Returns:
+        -------
+        None
+            This function does not return a value. It generates a plot of the FRF magnitude.
+        Notes:
+        -----
+        - The function assumes a beam lattice system with specific material and geometric properties.
+        - The FRF is calculated based on modal parameters and system matrices.
+        - Peaks in the FRF magnitude are identified and annotated on the plot.
+        """
+
+    #The top most accelerometer is 1, the bottom most is 4
+
+    
+    f = accelerometer_location*round(0.34*number_of_elements/1.7)
+    k = (number_of_elements+1-f)*6+axis
+    system = Beam_Lattice()
+    
+    system.add_beam_edge(
+        number_of_elements=number_of_elements, 
+        E_modulus=2.1*10**11, 
+        shear_modulus=7.9*10**10,
+        primary_moment_of_area=2.157*10**-8,
+        secondary_moment_of_area=1.113*10**-8,
+        torsional_constant=3.7*10**-8,
+        density=7850, 
+        cross_sectional_area=1.737*10**-4, 
+        coordinates=[[0, 0, 0], [0, 0, 1.7]],
+        edge_polar_rotation=0,
+        point_mass=1.31,
+        point_mass_moment_of_inertias=(0,0,0),
+        point_mass_location='end_vertex'
+    )
+    system.fix_vertices((0,))
+    eigfreq, eigvec,_ = system.get_modal_param()
+    mass_matrix,_,_ = system.get_system_level_matrices()
+    freq = np.linspace(0, 300, 1000)  # Frequency range for FRF calculation
+    omega = 2 * np.pi * freq  # convert to rad/s
+    omega_n = 2 * np.pi * eigfreq  # convert to rad/s
+    n_modes = len(omega_n)
+    h_kl = np.zeros(len(freq), dtype=complex)
+
+    for j in range(n_modes):
+        phi_j = eigvec[:, j].reshape(-1, 1)
+        m_j = (phi_j.T @ mass_matrix @ phi_j).item()
+        num = phi_j[k, 0] * phi_j[k, 0]
+        denom = omega_n[j]**2 - omega**2 + 2j * 0.005 * omega_n[j] * omega
+        h_kl += num / (m_j * denom)
+
+    Z_kl = -omega**2 * h_kl
+    frf_mag = np.abs(Z_kl)  # Magnitude of the FRF
+    peaks, _ = find_peaks(frf_mag, height=0)
+
+    
+    plt.figure(figsize=(8, 4))
+    plt.plot(freq, frf_mag, color='orange')
+
+    for peak in peaks:
+        f_peak = freq[peak]
+        m_peak = frf_mag[peak]
+        plt.plot(f_peak, m_peak, 'ro', markersize=6)  # red circle
+        plt.text(f_peak, m_peak * 1.05, f'{f_peak:.1f} Hz', ha='center', va='bottom', fontsize=9)
+
+    plt.title(f'|Z_{{{k+1}{k+1}}}(ω)| Inertance FRF')
+    plt.xlabel('Frequency [Hz]')
+    plt.ylabel('Magnitude [m/s² per N]')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+
+modalexpander(data2,3,'x',30)
+#modelFRF(40,1,1)
+#fre1, bla, tis = system_identifier(8, 12, data, 0.001079)
+#print(fre1)
+#print(bla)
+#print(tis)
+
+
 '''
-
-
 a = 9
 N = A.shape[0]
 b = N-2*a+1
@@ -166,6 +320,8 @@ result3 = np.vstack((stacked_Yp, stacked_Yf))
 
 print(result3)
 '''
+
+
 
 
    
