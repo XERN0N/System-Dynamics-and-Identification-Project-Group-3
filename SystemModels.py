@@ -325,9 +325,9 @@ class Beam_Lattice:
         
         return system_mass_matrix, system_stiffness_matrix, system_damping_matrix
     
-    def get_eigen_freq(self):
+    def get_modal_param(self):
         """
-        Calculates the eigen frequencies of the system.
+        Calculates the modal parameters of the system.
 
         Returns
         -------
@@ -338,14 +338,16 @@ class Beam_Lattice:
         # Gets the system level matrices.
         mass_matrix, stiffness_matrix, _= self.get_system_level_matrices()
         # Calculates the eigenvalues and eigenvectors.
-        eigvals, _ = eig(stiffness_matrix, mass_matrix)
+        eigvals, eigvecs = eig(stiffness_matrix, mass_matrix)
         # Calculates the eigen frequencies.
         eigen_freq = np.sqrt(np.abs(eigvals)) / (2*np.pi)
         # Sorts the eigen frequencies and eigenvectors.
         sort_indices = np.argsort(eigen_freq)
         eigen_freq = eigen_freq[sort_indices]
+        eigvecs = eigvecs[:, sort_indices]
+        damped_freq = eigen_freq * np.sqrt(1 - 0.05**2) # Damping ratio of 0.05
 
-        return eigen_freq
+        return eigen_freq, eigvecs, damped_freq
 
     def fix_vertices(self, fixed_vertex_IDs: Collection[int]) -> None:
         """
@@ -612,7 +614,7 @@ if __name__ == "__main__":
     system = Beam_Lattice()
     
     system.add_beam_edge(
-        number_of_elements=1, 
+        number_of_elements=5, 
         E_modulus=2.1*10**11, 
         shear_modulus=7.9*10**10,
         primary_moment_of_area=2.157*10**-8,
@@ -622,9 +624,9 @@ if __name__ == "__main__":
         cross_sectional_area=1.737*10**-4, 
         coordinates=[[0, 0, 0], [0, 0, 1.7]],
         edge_polar_rotation=0,
-        point_mass=3,
-        point_mass_moment_of_inertias=(1,2,3),
-        point_mass_location='start_vertex'
+        point_mass=1.31,
+        point_mass_moment_of_inertias=(0,0,0),
+        point_mass_location='end_vertex'
     )
 
 
@@ -632,15 +634,18 @@ if __name__ == "__main__":
     system.add_forces({1: lambda t: [0, 0, 0, 0, 0, 0]})
     system.fix_vertices((0,))
     displaced_shape_points = system.get_displaced_shape_position()
-    output = system.get_eigen_freq()
+    output, eigvec, damped = system.get_modal_param()
     
     for displaced_shape_point in displaced_shape_points:
         ax.plot(displaced_shape_point[:, 0], displaced_shape_point[:, 1], displaced_shape_point[:, 2], linewidth=2.0, linestyle='--')
-    MM, KK,_ = system.get_system_level_matrices()
-    eigvals, eigvecs = eig(KK, MM)
-
-    print(MM,KK)
-    print(output)
+    #MM, KK,_ = system.get_system_level_matrices()
+    #eigvals, eigvecs = eig(KK, MM)
+    
+    #print(eigvecs.shape)
+    #print(output.shape)
+    print(damped)
+    #print(MM,KK)
+    #print(output)
 
     ax.axis('equal')
     ax.set_xlabel('x')
