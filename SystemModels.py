@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.typing as npt
-from typing import Callable
+from typing import Callable, Literal
 import igraph as ig
 from collections.abc import Collection, Generator
 from scipy.linalg import block_diag, eig
@@ -48,7 +48,8 @@ class Beam_Lattice:
     def add_beam_edge(self, number_of_elements: int, E_modulus: npt.ArrayLike, shear_modulus: npt.ArrayLike, primary_moment_of_area: npt.ArrayLike, 
                       secondary_moment_of_area: npt.ArrayLike, torsional_constant: npt.ArrayLike, density: npt.ArrayLike, 
                       cross_sectional_area: npt.ArrayLike, vertex_IDs: Collection[int, int] | int | None = None, coordinates: npt.ArrayLike | None = None, 
-                      edge_polar_rotation: float | None = None) -> None:
+                      edge_polar_rotation: float | None = None, point_mass_location: Literal['end_vertex', 'start_vertex'] | None = None,
+                      point_mass: float | None = None, point_mass_moment_of_inertias: npt.ArrayLike = (0, 0, 0)) -> None:
         """
         Adds an edge to the graph containing a straight set of beam elements or just a single beam elemet.
 
@@ -90,6 +91,14 @@ class Beam_Lattice:
         edge_polar_rotation : float, optional
             Rotation of the beam along the beam axis [rad]. The order of rotation is polar-primary-secondary (x-z-y) so this is the first
             rotation applied to the beam. Default 0.
+        point_mass_location : str, optional
+            The location of an optional point mass. Can be either 'start_vertex' or 'end_vertex'. If 'point_mass' is not provided, this parameter
+            is ignored.
+        point_mass : float, optional
+            The mass of the optional point mass. If 'point_mass_location' is not provided this parameter is ignored.
+        point_mass_moment_of_inertias : array_like, optional
+            The moment of inertias of the optional point mass with shape (3,) in the order polar-secondary-primary (x, y, z).
+            If provided, 'point_mass_location' and 'point_mass' parameters must be provided. Default is (0, 0, 0).
         """
         # Additional parameters for the vertices.
         additional_vertex_parameters = {
@@ -192,6 +201,16 @@ class Beam_Lattice:
             edge_mass_matrix += element_pickoff_operator.T @ element_mass_matrix @ element_pickoff_operator
             edge_stiffness_matrix += element_pickoff_operator.T @ element_stiffness_matrix @ element_pickoff_operator
         
+        # Adding optional point mass.
+        if point_mass_location is not None:
+            match point_mass_location:
+                case 'end_vertex':
+                    point_mass_indices = slice(-6, None)
+                case 'start_vertex':
+                    point_mass_indices = slice(0, 6)
+            edge_mass_matrix[point_mass_indices, point_mass_indices] += np.block([[point_mass * np.eye(3),               np.zeros((3, 3))           ],
+                                                                                  [   np.zeros((3, 3)),    point_mass_moment_of_inertias * np.eye(3)]])
+
         # Rotates the mass and stiffness matrices to the global context.
         edge_primary_angle_cos, edge_primary_angle_sin = edge_vector[:2] / np.linalg.norm(edge_vector[:2]) if not np.array_equal(edge_vector[:2], (0, 0)) else (1.0, 0.0)
         edge_secondary_angle_cos, edge_secondary_angle_sin = (np.linalg.norm(edge_vector[:2]), -edge_vector[2]) / np.linalg.norm(edge_vector)
@@ -602,7 +621,10 @@ if __name__ == "__main__":
         density=7850, 
         cross_sectional_area=1.737*10**-4, 
         coordinates=[[0, 0, 0], [0, 0, 1.7]],
-        edge_polar_rotation=0
+        edge_polar_rotation=0,
+        point_mass=3,
+        point_mass_moment_of_inertias=(1,2,3),
+        point_mass_location='start_vertex'
     )
 
 
