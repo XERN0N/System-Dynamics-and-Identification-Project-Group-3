@@ -504,10 +504,6 @@ class Beam_Lattice:
         output_dublicate_mask = unique_output_counts > 1
         if np.any(output_dublicate_mask):
             raise ValueError(f"'output_DOFs' is not unique. DOF(s) {unique_outputs[output_dublicate_mask]} are repeated.")
-        inputs_in_outputs_mask = np.isin(input_DOFs, output_DOFs)
-        if np.any(inputs_in_outputs_mask):
-            raise ValueError("'input_DOFs' and 'output_DOFs' must not contain the same DOF(s). " + \
-                             f"The input DOF(s) {input_DOFs[inputs_in_outputs_mask]} are also in the output DOF(s).")
         mass_matrix, stiffness_matrix, damping_matrix = self.get_system_level_matrices()
         if max(input_DOFs) > len(mass_matrix)-1:
             raise ValueError(f"DOF indices {input_DOFs[input_DOFs > len(mass_matrix)-1]} in 'input_DOFs' are out of bounds with system DOF of {len(mass_matrix)}.")
