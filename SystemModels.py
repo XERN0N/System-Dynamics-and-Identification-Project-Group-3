@@ -523,7 +523,7 @@ class Beam_Lattice:
                                             [-mass_matrix_inverted @ stiffness_matrix, -mass_matrix_inverted @ damping_matrix]])
         if timestep is not None:
             state_matrix = expm(timestep * continuous_state_matrix)
-            input_matrix = np.linalg.inv(continuous_state_matrix) @ (state_matrix - np.eye(state_matrix.shape)) @ input_matrix
+            input_matrix = np.linalg.inv(continuous_state_matrix) @ (state_matrix - np.eye(len(state_matrix))) @ input_matrix
         else:
             state_matrix = continuous_state_matrix
         # Generates the output matrix.
