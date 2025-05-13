@@ -6,6 +6,7 @@ from collections.abc import Collection, Generator
 from scipy.linalg import block_diag, eig
 from warnings import deprecated
 from contextlib import contextmanager
+from scipy.linalg import expm
 
 class Beam_Lattice:
     """
@@ -467,6 +468,88 @@ class Beam_Lattice:
             return force_vector
         else:
             return np.delete(force_vector, self.fixed_DOFs)
+
+    def get_state_space_matrices(self, output_kinematic: Literal['receptence', 'mobility', 'accelerance'], 
+                                 input_DOFs: tuple[int], 
+                                 output_DOFs: tuple[int],
+                                 timestep: float | None = None
+                                 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        """
+        Gets the input- output, state-, and transmission matrices in the first order formulation given m outputs and r inputs.
+
+        Parameters
+        ----------
+        output_kinematic : str
+            The type of kinematic the ouput vector should be. Can be either 'receptence', 'mobility' or 'accelerance'.
+        input_DOFs : tuple of int
+            The DOFs in the system level matrices with shape (r,) that relate to the inputs (must be unique).
+        output_DOFs : tuple of int
+            The DOFs in the system level matrices with shape (m,) that relate to the outputs (must be unique).
+        timesteps : float, optional
+            The timestep of the inputs and outputs. If not provided the matrices are in the continuous time domain. 
+
+        Returns
+        tuple of 4 numpy arrays
+            The four matrices in the order (state, input, output, transmission) with shapes ((2n, 2n), (2n, r), (m, 2n), (m, r))
+            where n is the total number of DOF in the system.
+        """
+        # Error handling.
+        input_DOFs = np.asarray(input_DOFs)
+        output_DOFs = np.asarray(output_DOFs)
+        unique_inputs, unique_input_counts = np.unique(input_DOFs, return_counts=True)
+        input_dublicate_mask = unique_input_counts > 1
+        if np.any(input_dublicate_mask):
+            raise ValueError(f"'input_DOFs' is not unique. DOF(s) {unique_inputs[input_dublicate_mask]} are repeated.")
+        unique_outputs, unique_output_counts = np.unique(output_DOFs, return_counts=True)
+        output_dublicate_mask = unique_output_counts > 1
+        if np.any(output_dublicate_mask):
+            raise ValueError(f"'output_DOFs' is not unique. DOF(s) {unique_outputs[output_dublicate_mask]} are repeated.")
+        inputs_in_outputs_mask = np.isin(input_DOFs, output_DOFs)
+        if np.any(inputs_in_outputs_mask):
+            raise ValueError("'input_DOFs' and 'output_DOFs' must not contain the same DOF(s). " + \
+                             f"The input DOF(s) {input_DOFs[inputs_in_outputs_mask]} are also in the output DOF(s).")
+        mass_matrix, stiffness_matrix, damping_matrix = self.get_system_level_matrices()
+        if max(input_DOFs) > len(mass_matrix)-1:
+            raise ValueError(f"DOF indices {input_DOFs[input_DOFs > len(mass_matrix)-1]} in 'input_DOFs' are out of bounds with system DOF of {len(mass_matrix)}.")
+        if max(output_DOFs) > len(mass_matrix)-1:
+            raise ValueError(f"DOF indices {output_DOFs[output_DOFs > len(mass_matrix)-1]} in 'output_DOFs' are out of bounds with system DOF of {len(mass_matrix)}.")
+        
+        mass_matrix_inverted = np.linalg.inv(mass_matrix)
+        number_of_DOFs = len(mass_matrix)
+        # Creating the input distribution matrix.
+        input_distribution_matrix = np.zeros((number_of_DOFs, len(input_DOFs)))
+        for i, DOF in enumerate(input_DOFs):
+            input_distribution_matrix[DOF, i] = 1
+        # Creates the input and state matrix.
+        input_matrix = np.block([[np.zeros((number_of_DOFs, len(input_DOFs)))], 
+                                 [mass_matrix_inverted @ input_distribution_matrix]])
+        continuous_state_matrix = np.block([[np.zeros((number_of_DOFs, number_of_DOFs)), np.eye(number_of_DOFs)],
+                                            [-mass_matrix_inverted @ stiffness_matrix, -mass_matrix_inverted @ damping_matrix]])
+        if timestep is not None:
+            state_matrix = expm(timestep * continuous_state_matrix)
+            input_matrix = np.linalg.inv(continuous_state_matrix) @ (state_matrix - np.eye(state_matrix.shape)) @ input_matrix
+        else:
+            state_matrix = continuous_state_matrix
+        # Generates the output matrix.
+        receptence_output_matrix = np.zeros((len(output_DOFs), number_of_DOFs))
+        mobility_output_matrix = np.zeros((len(output_DOFs), number_of_DOFs))
+        accelerance_output_matrix = np.zeros((len(output_DOFs), number_of_DOFs))
+        for i, DOF in enumerate(output_DOFs):
+            match output_kinematic:
+                case 'receptence':
+                    receptence_output_matrix[i, DOF]
+                case 'mobility':
+                    mobility_output_matrix[i, DOF]
+                case 'accelerance':
+                    accelerance_output_matrix[i, DOF]
+                case _:
+                    raise ValueError(f"The parameter 'output_kinematic expected either 'receptence', 'mobility', or 'accelerance' but recieved '{output_kinematic}'.")
+        output_matrix = np.block([receptence_output_matrix - accelerance_output_matrix @ mass_matrix_inverted @ stiffness_matrix, 
+                                  mobility_output_matrix - accelerance_output_matrix @ mass_matrix_inverted @ damping_matrix])
+        # Generates the transmission matrix.
+        transmission_matrix = accelerance_output_matrix @ mass_matrix_inverted @ input_distribution_matrix
+
+        return state_matrix, input_matrix, output_matrix, transmission_matrix
 
     @deprecated("Use Static from SystemSolver insted.")
     def get_static_vertex_and_node_displacements(self, include_fixed_vertices: bool = False) -> npt.NDArray:
