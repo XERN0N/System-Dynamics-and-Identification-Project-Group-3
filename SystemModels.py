@@ -470,8 +470,8 @@ class Beam_Lattice:
             return np.delete(force_vector, self.fixed_DOFs)
 
     def get_state_space_matrices(self, output_kinematic: Literal['receptence', 'mobility', 'accelerance'], 
-                                 input_DOFs: tuple[int], 
-                                 output_DOFs: tuple[int],
+                                 input_DOFs: tuple[int] | None = None, 
+                                 output_DOFs: tuple[int] | None = None,
                                  timestep: float | None = None
                                  ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """
@@ -481,10 +481,12 @@ class Beam_Lattice:
         ----------
         output_kinematic : str
             The type of kinematic the ouput vector should be. Can be either 'receptence', 'mobility' or 'accelerance'.
-        input_DOFs : tuple of int
-            The DOFs in the system level matrices with shape (r,) that relate to the inputs (must be unique).
-        output_DOFs : tuple of int
-            The DOFs in the system level matrices with shape (m,) that relate to the outputs (must be unique).
+        input_DOFs : tuple of int, optional
+            The DOFs in the system level matrices with shape (r,) that relate to the inputs (must be unique). If not specified,
+            all are chosen.
+        output_DOFs : tuple of int, optional
+            The DOFs in the system level matrices with shape (m,) that relate to the outputs (must be unique). If not specified,
+            all are chosen.
         timesteps : float, optional
             The timestep of the inputs and outputs. If not provided the matrices are in the continuous time domain. 
 
@@ -494,8 +496,8 @@ class Beam_Lattice:
             where n is the total number of DOF in the system.
         """
         # Error handling.
-        input_DOFs = np.asarray(input_DOFs)
-        output_DOFs = np.asarray(output_DOFs)
+        input_DOFs = np.asarray(input_DOFs) if input_DOFs is not None else np.arange(self.system_DOF - len(self.fixed_DOFs))
+        output_DOFs = np.asarray(output_DOFs) if output_DOFs is not None else np.arange(self.system_DOF - len(self.fixed_DOFs))
         unique_inputs, unique_input_counts = np.unique(input_DOFs, return_counts=True)
         input_dublicate_mask = unique_input_counts > 1
         if np.any(input_dublicate_mask):
@@ -533,11 +535,11 @@ class Beam_Lattice:
         for i, DOF in enumerate(output_DOFs):
             match output_kinematic:
                 case 'receptence':
-                    receptence_output_matrix[i, DOF]
+                    receptence_output_matrix[i, DOF] = 1
                 case 'mobility':
-                    mobility_output_matrix[i, DOF]
+                    mobility_output_matrix[i, DOF] = 1
                 case 'accelerance':
-                    accelerance_output_matrix[i, DOF]
+                    accelerance_output_matrix[i, DOF] = 1
                 case _:
                     raise ValueError(f"The parameter 'output_kinematic expected either 'receptence', 'mobility', or 'accelerance' but recieved '{output_kinematic}'.")
         output_matrix = np.block([receptence_output_matrix - accelerance_output_matrix @ mass_matrix_inverted @ stiffness_matrix, 
