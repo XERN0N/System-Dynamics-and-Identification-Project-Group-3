@@ -547,6 +547,37 @@ class Beam_Lattice:
 
         return state_matrix, input_matrix, output_matrix, transmission_matrix
 
+    def get_toeplitz_matrix(self, output_kinematic: Literal['receptence', 'mobility', 'accelerance'], 
+                                  input_DOFs: tuple[int], 
+                                  output_DOFs: tuple[int],
+                                  timestep: float,
+                                  number_of_timesteps: int
+                                  ) -> npt.NDArray:
+        """
+        Generates the block lower triangular toeplitz matrix given m outputs and r inputs.
+
+        Parameters
+        ----------
+        output_kinematic : str
+            The type of kinematic the ouput vector should be. Can be either 'receptence', 'mobility' or 'accelerance'.
+        input_DOFs : tuple of int
+            The DOFs in the system level matrices with shape (r,) that relate to the inputs (must be unique).
+        output_DOFs : tuple of int
+            The DOFs in the system level matrices with shape (m,) that relate to the outputs (must be unique).
+        timestep : float
+            The timesteps of the inputs and outputs.
+        """
+        state_matrix, input_matrix, output_matrix, transmission_matrix = self.get_state_space_matrices(output_kinematic, input_DOFs, output_DOFs, timestep)
+        toeplitz_matrix_row = np.block([transmission_matrix, *(np.zeros(transmission_matrix.shape),)*(number_of_timesteps-1)])
+        toeplitz_matrix = np.empty((number_of_timesteps*len(output_DOFs), number_of_timesteps*len(input_DOFs)))
+        state_matrix_powered = np.eye(len(state_matrix))
+        for block_row_number in range(number_of_timesteps):
+            block_row_indices = slice(block_row_number*len(output_DOFs), block_row_number*len(output_DOFs)+len(output_DOFs))
+            toeplitz_matrix[block_row_indices] = toeplitz_matrix_row
+            toeplitz_matrix_row = np.block([output_matrix @ state_matrix_powered @ input_matrix, toeplitz_matrix_row[:, len(input_DOFs):]])
+            state_matrix_powered @= state_matrix
+        return toeplitz_matrix
+
     @deprecated("Use Static from SystemSolver insted.")
     def get_static_vertex_and_node_displacements(self, include_fixed_vertices: bool = False) -> npt.NDArray:
         """
