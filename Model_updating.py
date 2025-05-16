@@ -11,7 +11,7 @@ model = generate_original_model()
 
 # Function to compute the Jacobian matrix
 def compute_jacobian(phi, omega, E, rho, step=1e-6):
-    delta_E = 1e3
+    delta_E = 1e-1
 
     # Base model
     model = generate_original_model(density=rho, E_modulus=E)
@@ -36,7 +36,7 @@ def compute_jacobian(phi, omega, E, rho, step=1e-6):
     return J
 
 # Function to perform the Newton update
-def newton_update(theta0: npt.NDArray, omega_target, eps=1e-3, it_limit=100, alpha=1):
+def newton_update(theta0: npt.NDArray, omega_target, eps=1e-6, it_limit=1000, alpha=1):
     theta_hist = [theta0.copy()]
     delta = 2 * eps
     k = 1
@@ -44,8 +44,8 @@ def newton_update(theta0: npt.NDArray, omega_target, eps=1e-3, it_limit=100, alp
     while delta >= eps:
         E, rho = theta_hist[-1]
         model = generate_original_model(density=rho, E_modulus=E)
-        omega, phi,_ = model.get_modal_param()
-        omega = omega[:5] * 2*np.pi
+        omega, phi,_ = model.get_modal_param(eigen_value_sort=False, convert_to_frequencies=False)
+        omega = np.sqrt(omega[:5])
         J = compute_jacobian(phi, omega, E, rho)
         update_step = pinv(J) @ (omega_target - omega)
 
@@ -67,8 +67,8 @@ def newton_update(theta0: npt.NDArray, omega_target, eps=1e-3, it_limit=100, alp
 # Create target system (for comparison)
 
 system_features = generate_original_model()
-omega_target, _, _ = system_features.get_modal_param()
-omega_target = omega_target[:5]*2*np.pi
+omega_target, _, _ = system_features.get_modal_param(eigen_value_sort=False, convert_to_frequencies=False)
+omega_target = np.sqrt(omega_target[:5])
 
 # Initial guess for E and rho
 E_init = 2.2e11  # Pa (steel)
@@ -80,6 +80,8 @@ theta_hist = newton_update(theta0, omega_target)
 
 # Plot convergence
 iterations = np.arange(theta_hist.shape[1])
+for i in range(theta_hist.shape[1]):
+    print(f"Iteration {i}: E = {theta_hist[0, i]:.3e}, rho = {theta_hist[1, i]:.2f}")
 
 # Plotting the convergence of E modulus
 plt.figure()
