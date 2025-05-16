@@ -1,8 +1,13 @@
 import os
 import pandas as pd
 import numpy as np
+import numpy.typing as npt
+from typing import Literal
+from matplotlib import cm
 import matplotlib.pyplot as plt
-from scipy.fft import fft, fftfreq
+from scipy.fft import rfft, rfftfreq
+from scipy.integrate import cumulative_trapezoid
+from scipy import signal as sig
 import tkinter as tk
 from tkinter import filedialog
 
@@ -12,48 +17,71 @@ def select_data_folder():
     root = tk.Tk()
     root.withdraw()
     folder_path = filedialog.askdirectory(title="Select Folder Containing CSV Files")
+    
+    if not folder_path:
+        raise ValueError("No folder selected. Exiting.")
+        return
     return folder_path
-
 
 def load_csv(file_path):
     #Reads the csv files from the folder
     try:
         data = pd.read_csv(file_path, dtype=float, delimiter=",") # Read the CSV file into a DataFrame
-        if data.empty or data.shape[1] < 5: # Check if the file has at least 5 columns
+        if data.empty or data.shape[1] < 8: # Check if the) file has at least 5 columns
             raise ValueError("Insufficient data columns") #Error at too few columns
         return data 
     except Exception as e:
         print(f"Failed to load {file_path}: {e}")
         return None
+    
+def get_filter(lower_cutoff_frequency, higher_cutoff_frequency = None, filter_order = 2, filter_type = Literal["highpass", "bandpass"], sampling_frequency = 427):
+    nyquist = sampling_frequency * 0.5
+    normalized_lower = lower_cutoff_frequency / nyquist
+    if higher_cutoff_frequency is not None:
+        normalized_higher = higher_cutoff_frequency / nyquist
+    if filter_type == "highpass":
+        custom_filter = sig.butter(filter_order, normalized_lower, 'highpass', output='sos')
+    elif filter_type == "bandpass":
+        custom_filter = sig.butter(filter_order, np.array([normalized_lower, normalized_higher]), 'bandpass', output='sos')
+    else:
+        print(f"Wrong inputs: {lower_cutoff_frequency}, {higher_cutoff_frequency}, {filter_order}, {filter_type}")
+    return custom_filter
 
-
-def compute_fft(signal, delta_t):
+def compute_fft(signal, delta_t, hann = False):
     #Computes the FFT of the signal and returns the frequencies and magnitudes
-    n = len(signal)
-    freqs = fftfreq(n, d=delta_t)[:n // 2]
-    fft_vals = fft(signal)
-    mags = 2.0 / n * np.abs(fft_vals[:n // 2])
+    signal_length = len(signal)
+    if hann == True:
+        hann_window = np.hanning(signal_length)
+        signal *= hann_window
+        norm_factor = np.sum(hann_window)
+    else:
+        norm_factor = signal_length
+    freqs = rfftfreq(signal_length, delta_t)
+    mags = 2.0 / norm_factor * rfft(signal)
+
     return freqs, mags
 
+def Signal_integration(Desired_signal, Provided_signal, delta_t):
+    #Define the desired signal and integrate accordingly
+    if Desired_signal == "Velocity":
+        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t, initial=0) #integrating once
+    elif Desired_signal == "Displacement":
+        Integrated_signal = cumulative_trapezoid(Provided_signal, dx=delta_t, initial=0)  #integrating twice
+    else:
+        raise ValueError(f"Invalid signal type: {Desired_signal}")
+    
+    return Integrated_signal
 
-def find_peak_frequencies(freqs, mags, num_peaks=4):
-    """Finds the top N peak frequencies from the FFT magnitude."""
-    peak_indices = np.argpartition(mags, -num_peaks)[-num_peaks:]
-    peak_freqs = freqs[peak_indices]
-    peak_mags = mags[peak_indices]
-    peak_idx = np.argmax(peak_mags)
-    return peak_freqs, peak_mags, peak_freqs[peak_idx], peak_mags[peak_idx]
 
-
-def plot_fft_results(file_name, fft_results, delta_t):
-    """Plots the FFT results for each sensor."""
+def plot_fft_results(file_name, fft_bin, fft_results, peak_freqs, peak_mags, delta_t):
+    #Plots the FFT results for each sensor.
     plt.figure(figsize=(12, 6))
     colors = ['b', 'r', 'g', 'm']
+    #For-loop to take each sensor's FFT results and plot them
+    for i in range(fft_results.shape[1]):
+        plt.plot(fft_bin[:, i], fft_results[:, i], label=f"Sensor {i+1}", color=colors[i % len(colors)])
+        plt.plot(peak_freqs[i], peak_mags[i], 'o', color=colors[i % len(colors)])
 
-    for i, (freqs, mags, peaks_f, peaks_m) in enumerate(fft_results):
-        label = f"Sensor {i}"
-        plt.plot(freqs, mags, label=label, color=colors[i])
-        plt.plot(peaks_f, peaks_m, 'o', color=colors[i])  # Highlight peaks
 
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Amplitude")
@@ -64,35 +92,97 @@ def plot_fft_results(file_name, fft_results, delta_t):
     plt.tight_layout()
     plt.show()
 
+def find_peak_frequencies(freqs, mags, peak_width = None, min_amplitude = None):
+    """Finds the top N peak frequencies from the FFT magnitude."""
+    if peak_width is not None:
+        freq_resolution = freqs[1] - freqs[0]
+        peak_width = int(peak_width / freq_resolution)
 
-def process_file(file_path):
+    if min_amplitude is not None:
+        peaks, _ = sig.find_peaks(mags, distance=peak_width, height=min_amplitude)
+    else:
+        peaks, _ = sig.find_peaks(mags, distance=peak_width)
+
+    peak_freqs = freqs[peaks]
+    peak_mags = mags[peaks]
+
+    return peak_freqs, peak_mags
+
+def plot_signal(file_name, Acceleration_signal, Velocity_signal, Displacement_signal, time):
+    
+    signal_data = [Acceleration_signal, Velocity_signal, Displacement_signal]
+    signal_labels = ['Acceleration', 'Velocity', 'Displacement']
+    y_labels = ['Acceleration (m/s²)', 'Velocity (m/s)', 'Displacement (m)']
+    
+    cmap =  cm.get_cmap('tab10', 8)
+    colors = [cmap(i) for i in range(8)]
+    
+    #colors = ['b', 'r', 'g', 'm', 'b', 'r', 'g', 'm']
+    print(signal_data[1][:5, :])
+    fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+
+    fig.suptitle(f"Sensor signals over time from file: {file_name}")    
+    for i, ax in enumerate(axs):
+        ax.set_title(signal_labels[i])
+
+        for sensor in range(signal_data[i].shape[1]):
+            ax.plot(time, signal_data[i][:, sensor], label=f'Sensor {sensor+1}', color = colors[sensor])
+        ax.set_ylabel(y_labels[i])
+        ax.grid(True)
+        ax.legend()
+
+    axs[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.show()
+    #plt.savefig(file_name)
+    
+
+def process_file(file_path, sos_filter = None, hann = None, peak_width = None, min_amplitude = None):
     """Handles reading, processing, and plotting for one file."""
     print(f"\nProcessing: {file_path}")
     data = load_csv(file_path)
     if data is None:
         return
 
-    time = data.iloc[:, 4].values
-    delta_t = np.mean(np.diff(time))
+    signal_length = len(data)
+    last_sensor_direction = 11
 
-    fft_results = []
+    #initialize numpy arrays for processed values
+    Acceleration_signal = np.empty((signal_length, last_sensor_direction-3))
+    Displacement_signal = np.empty((signal_length, last_sensor_direction-3))
+    Velocity_signal = np.empty((signal_length, last_sensor_direction-3))
+    n_fft = signal_length//2 + 1
+    fft_results = np.empty((n_fft, last_sensor_direction-3))
+    fft_bins = np.empty((n_fft, last_sensor_direction-3))
+    peak_freqs = []
+    peak_mags = []
 
-    for i in range(4):
-        signal = data.iloc[:, i].values
-        freqs, mags = compute_fft(signal, delta_t)
-        peak_freqs, peak_mags, peak_x, peak_y = find_peak_frequencies(freqs, mags)
+    time = data.iloc[:, 0].values
+    delta_t = data.iloc[0, 2]/1000000
+    signal = data.iloc[:, 3:last_sensor_direction]
 
-        print(f"Sensor {i}: Peak Frequency = {peak_x:.2f} Hz, Peak Amplitude = {peak_y:.3f}")
-        fft_results.append((freqs, mags, peak_freqs, peak_mags))
+    for i, col_name in enumerate(signal.columns):
+        sig_data = signal[col_name].values
+        if sos_filter is not None:
+            sig_data = sig.sosfilt(sos_filter, sig_data)
+        sig_data -= np.mean(sig_data)
+        fft_bins[:, i], fft_results[:, i] = compute_fft(sig_data, delta_t, hann=hann)
 
-    plot_fft_results(os.path.basename(file_path), fft_results, delta_t)
+        peaks_f, peaks_m = find_peak_frequencies(fft_bins[:, i], fft_results[:, i], peak_width=peak_width, min_amplitude=min_amplitude)
+        peak_freqs.append(peaks_f)
+        peak_mags.append(peaks_m)
+        
+        #Calulate the integrated signals displacement and velocities
+        Acceleration_signal[:, i] = sig_data
+        Velocity_signal[:, i] = Signal_integration("Velocity", sig_data, delta_t)
+        Displacement_signal[:, i] = Signal_integration("Displacement", Velocity_signal[:, i], delta_t)
 
+    plot_signal(os.path.basename(file_path), Acceleration_signal, Velocity_signal, Displacement_signal, time=time)
+    plot_fft_results(os.path.basename(file_path), fft_bins, fft_results, peak_freqs, peak_mags, delta_t)
 
 def main():
+
     folder_path = select_data_folder()
-    if not folder_path:
-        print("No folder selected. Exiting.")
-        return
 
     file_list = [f for f in os.listdir(folder_path) if f.lower().endswith(".txt")]
     if not file_list:
@@ -101,57 +191,13 @@ def main():
 
     for file in file_list:
         file_path = os.path.join(folder_path, file)
-        process_file(file_path)
+        #test_filter = sig.butter(2, 0.01, 'highpass', output='sos')
+        test_filter = get_filter(0.1, 30, 2, "bandpass", 427)
+        process_file(file_path, sos_filter=None, hann=False, peak_width=5, min_amplitude=0.01)
+
+
 
 
 if __name__ == "__main__":
     main()
 
-
-
-
-
-'''
-for file in File_list:
-    file_path = os.path.join(Data_folder_path, file)
-    print(f"Processing file: {file_path}")
-
-    try:
-        # Read file with no header (assuming no column names)
-        Data = pd.read_csv(file_path, dtype=float, delimiter=",")
-        print(Data.head()) #Preview data
-
-        # Extract first three rows (Description part)
-        Description = Data.iloc[:3].fillna('').astype(str)
-
-    except Exception as e:
-        print(f"Error processing {file}: {e}")
-
-Time = Data[:, 0]
-Signal_length = Time.size
-Delta_T = Time[-1]/Signal_length                                            #taking avg delta T and rounds
-Signal = Data[:, 1]                                                                  #extract signaly
-fft_signal = fft(Signal)                                                           #Fourier coefficients
-fft_signal_mag = np.abs(fft_signal)
-fft_freq_signal = fftfreq(Signal_length, Delta_T)[:Signal_length//2]
-num_max_values = 4
-largest_indices = np.argpartition(fft_signal_mag[:Signal_length//2], -num_max_values)[-num_max_values:]
-largest_values = fft_signal_mag[largest_indices]
-max = 2.0/Signal_length * largest_values
-max_loc = fft_freq_signal[largest_indices] * 2 * np.pi
-
-peakIdx = np.argmax(max)
-peakX = max_loc[peakIdx]
-peakY = max[peakIdx]
-print(peakX)
-print(peakY)
-
-plt.plot(2*np.pi*fft_freq_signal, 2.0/Signal_length * fft_signal_mag[:Signal_length//2]) #Single-sided fourier
-plt.plot(max_loc, max,'o')
-plt.xlabel('Frequency (Hz)')
-plt.ylabel('Amplitude')
-#plt.xlim(0, 1/Delta_T*1/2)
-plt.xlim(0, 350)
-plt.title('FFT of the Signal')
-plt.show()'
-print(f"Error processing {file}: {e}")'''
