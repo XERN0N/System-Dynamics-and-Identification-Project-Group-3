@@ -1,100 +1,103 @@
 # Script for model updating based on sensitivity analysis
 import numpy as np
+import numpy.typing as npt
 import matplotlib.pyplot as plt
 from scipy.linalg import eigh, pinv
+from SystemModels import Beam_Lattice
+from OriginalModel import generate_original_model
 
-def chain(m_vec, c_vec, k_vec):
-    dof = len(m_vec)
-    M = np.diag(m_vec)
-    K = np.zeros((dof, dof))
-    C = np.zeros((dof, dof))
-    
-    for i in range(dof):
-        K[i, i] += k_vec[i]
-        if i > 0:
-            K[i, i] += k_vec[i-1]
-            K[i, i-1] -= k_vec[i-1]
-            K[i-1, i] -= k_vec[i-1]
 
-        C[i, i] += c_vec[i]
-        if i > 0:
-            C[i, i] += c_vec[i-1]
-            C[i, i-1] -= c_vec[i-1]
-            C[i-1, i] -= c_vec[i-1]
+model = generate_original_model()
 
-    return M, C, K
+# Function to compute the Jacobian matrix
+def compute_jacobian(phi, omega, E, rho, step=1e-6):
+    delta_E = 1e3
 
-def compute_modal_properties(M, K):
-    lam, phi = eigh(K, M)
-    omega = np.sqrt(np.maximum(lam, 0))
-    idx = np.argsort(omega)
-    return omega[idx], phi[:, idx]
+    # Base model
+    model = generate_original_model(density=rho, E_modulus=E)
+    M_base, K_base, _ = model.get_system_level_matrices()
 
-def compute_jacobian(phi, omega, dK_list):
+    # Perturb E
+    model_E = generate_original_model(density=rho,E_modulus= E + delta_E)
+    _, K_E, _ = model_E.get_system_level_matrices()
+    dK_dE = (K_E - K_base) / delta_E
+
+    # Perturb rho
+    dM_drho = M_base / rho
+
+    # Compute Jacobian
     g = len(omega)
-    p = len(dK_list)
-    J = np.zeros((g, p))
-    for j in range(g):
-        for i in range(p):
-            J[j, i] = (phi[:, j].T @ dK_list[i] @ phi[:, j]) / (2 * omega[j])
+    J = np.zeros((g, 2))  # 2 columns: [∂ω/∂E, ∂ω/∂rho]
+    for i in range(g):
+        phi_i = phi[:, i]
+        w = omega[i]
+        J[i, 0] = (phi_i.T @ dK_dE @ phi_i) / (2 * w)
+        J[i, 1] = - (w / 2) * (phi_i.T @ dM_drho @ phi_i)
     return J
 
-def newton_update(theta0, dK_list, M, omega_target, eps=1e-8, it_limit=1000):
+# Function to perform the Newton update
+def newton_update(theta0: npt.NDArray, omega_target, eps=1e-3, it_limit=100, alpha=1):
     theta_hist = [theta0.copy()]
     delta = 2 * eps
-    i = 1
+    k = 1
+
     while delta >= eps:
-        theta = theta_hist[-1]
-        _, _, K = chain(np.zeros_like(theta), np.zeros_like(theta), theta)
-        omega, phi = compute_modal_properties(M, K)
-        J = compute_jacobian(phi, omega, dK_list)
-        theta_new = theta + pinv(J) @ (omega_target - omega)
-        delta = np.max(np.abs((theta_new - theta) / (theta + 1e-12)))
-        theta_hist.append(theta_new)
-        i += 1
-        if i > it_limit:
+        E, rho = theta_hist[-1]
+        model = generate_original_model(density=rho, E_modulus=E)
+        omega, phi,_ = model.get_modal_param()
+        omega = omega[:5] * 2*np.pi
+        J = compute_jacobian(phi, omega, E, rho)
+        update_step = pinv(J) @ (omega_target - omega)
+
+        theta_k = theta_hist[-1] + alpha * update_step  # Damped update
+        # theta_k = np.maximum(theta_k, np.array([1e9, 100.0]))  # Clamp E and ρ to physical values
+
+        delta = np.max(np.abs((theta_k - theta_hist[-1]) / (theta_hist[-1] + 1e-12)))
+        theta_hist.append(theta_k)
+
+        k += 1
+
+        if k > it_limit:
             print("Not converged within iteration limit")
             break
-    print(f"Converged after {i-1} iterations")
-    return np.array(theta_hist).T  # shape: (dof, iterations)
 
-# --- MAIN SCRIPT ---
-dof = 3
-m = np.ones(dof)
-k = 100 * np.ones(dof)
-c = 0.01 * np.ones(dof)
+    print(f"Convergence after {k-1} iterations")
+    return np.array(theta_hist).T
 
-# Initial model
-M, _, K = chain(m, np.zeros_like(c), k)
-omega_model, phi_model = compute_modal_properties(M, K)
+# Create target system (for comparison)
 
-# Perturbed system (truth)
-ks = k.copy()
-ks[0] *= 0.8
-ks[-1] *= 1.1
-_, _, Ks = chain(m, np.zeros_like(c), ks)
-omega_target, _ = compute_modal_properties(M, Ks)
+system_features = generate_original_model()
+omega_target, _, _ = system_features.get_modal_param()
+omega_target = omega_target[:5]*2*np.pi
 
-# Sensitivities
-dK_list = []
-for i in range(dof):
-    dk = np.zeros(dof)
-    dk[i] = 1.0
-    _, _, dK = chain(m, np.zeros(dof), dk)
-    dK_list.append(dK)
+# Initial guess for E and rho
+E_init = 2.2e11  # Pa (steel)
+rho_init = 7950  # kg/m³
+theta0 = np.array([E_init, rho_init])
 
 # Run Newton update
-theta0 = k.copy()
-theta_hist = newton_update(theta0, dK_list, M, omega_target)
+theta_hist = newton_update(theta0, omega_target)
 
-# Plotting
-plt.figure(figsize=(8, 5))
-for i in range(dof):
-    plt.semilogy(theta_hist[i], label=f'$k_{i+1}$')
-plt.xlabel('Iteration')
-plt.ylabel('Parameter estimate')
-plt.title('Evolution of estimated parameters')
-plt.legend()
+# Plot convergence
+iterations = np.arange(theta_hist.shape[1])
+
+# Plotting the convergence of E modulus
+plt.figure()
+plt.plot(theta_hist[0], label="E modulus")
+plt.xlabel("Iteration")
+plt.ylabel("Parameter estimate")
+plt.title("Convergence of E modulus")
 plt.grid(True)
+plt.legend()
+
+# Plotting the convergence of density
+plt.figure()
+plt.plot(theta_hist[1], label="Density", color='green')
+plt.xlabel("Iteration")
+plt.ylabel("Density [kg/m³]")
+plt.title("Convergence of Density")
+plt.grid(True)
+plt.legend()
 plt.tight_layout()
+
 plt.show()
