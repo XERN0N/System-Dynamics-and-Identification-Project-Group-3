@@ -3,7 +3,7 @@ import numpy.typing as npt
 from typing import Callable, Literal
 import igraph as ig
 from collections.abc import Collection, Generator
-from scipy.linalg import block_diag, eigh
+from scipy.linalg import block_diag, eigh, eig
 from warnings import deprecated
 from contextlib import contextmanager
 from scipy.linalg import expm
@@ -314,7 +314,7 @@ class Beam_Lattice:
             system_stiffness_matrix = np.delete(system_stiffness_matrix, fixed_DOFs, axis=1)
 
         # Damping ready stuff here.
-        eigvals, eigvecs = eigh(system_stiffness_matrix, system_mass_matrix)
+        eigvals, eigvecs = eig(system_stiffness_matrix, system_mass_matrix)
         # Modal mass matrix.
         modal_mass_matrix = eigvecs.T @ system_mass_matrix @ eigvecs
         #norm_eigvecs = eigvecs @ np.diag(1/np.sqrt(np.diag(Mt)))
@@ -326,7 +326,7 @@ class Beam_Lattice:
         
         return system_mass_matrix, system_stiffness_matrix, system_damping_matrix
     
-    def get_modal_param(self, eigen_value_sort: bool = True, convert_to_frequencies: bool = True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    def get_modal_param(self, eigen_value_sort: bool = True, convert_to_frequencies: bool = True, normalize: bool = False) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Calculates the modal parameters of the system.
 
@@ -336,6 +336,8 @@ class Beam_Lattice:
             Sort the eigen values and vectors according to the eigen values. Default true.
         convert_to_frequencies : bool, optional
             Convert the eigen values to frequencies (in Hz). Default true.
+        normalize : bool, optional
+            Whether the eigen vectors are mass normalized or not. Default is false.
 
         Returns
         -------
@@ -345,7 +347,7 @@ class Beam_Lattice:
         # Gets the system level matrices.
         mass_matrix, stiffness_matrix, _= self.get_system_level_matrices()
         # Calculates the eigenvalues and eigenvectors.
-        eigvals, eigvecs = eigh(stiffness_matrix, mass_matrix)
+        eigvals, eigvecs = eigh(stiffness_matrix, mass_matrix) if normalize else eig(stiffness_matrix, mass_matrix)
         # Calculates the eigen frequencies.
         eigvals = np.sqrt(np.abs(eigvals)) / (2*np.pi) if convert_to_frequencies else eigvals
         # Sorts the eigen frequencies and eigenvectors.
