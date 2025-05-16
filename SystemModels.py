@@ -3,7 +3,7 @@ import numpy.typing as npt
 from typing import Callable, Literal
 import igraph as ig
 from collections.abc import Collection, Generator
-from scipy.linalg import block_diag, eig
+from scipy.linalg import block_diag, eigh
 from warnings import deprecated
 from contextlib import contextmanager
 from scipy.linalg import expm
@@ -314,7 +314,7 @@ class Beam_Lattice:
             system_stiffness_matrix = np.delete(system_stiffness_matrix, fixed_DOFs, axis=1)
 
         # Damping ready stuff here.
-        eigvals, eigvecs = eig(system_stiffness_matrix, system_mass_matrix)
+        eigvals, eigvecs = eigh(system_stiffness_matrix, system_mass_matrix)
         # Modal mass matrix.
         modal_mass_matrix = eigvecs.T @ system_mass_matrix @ eigvecs
         #norm_eigvecs = eigvecs @ np.diag(1/np.sqrt(np.diag(Mt)))
@@ -326,29 +326,37 @@ class Beam_Lattice:
         
         return system_mass_matrix, system_stiffness_matrix, system_damping_matrix
     
-    def get_modal_param(self):
+    def get_modal_param(self, eigen_value_sort: bool = True, convert_to_frequencies: bool = True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Calculates the modal parameters of the system.
 
+        Parameters
+        ----------
+        eigen_value_sort : bool, optional
+            Sort the eigen values and vectors according to the eigen values. Default true.
+        convert_to_frequencies : bool, optional
+            Convert the eigen values to frequencies (in Hz). Default true.
+
         Returns
         -------
-        numpy array
-            Sorted eigen frequencies of the system with shape (n,) where n is the number of eigen frequencies.
-            The eigen frequencies are sorted in ascending order, and converted to Hz.
+        tuple of numpy array
+            The modal parameters as (eigen values, eigen vectors, damped eigen values) with shapes ((n,), (n, n), (n,)).
         """ 
         # Gets the system level matrices.
         mass_matrix, stiffness_matrix, _= self.get_system_level_matrices()
         # Calculates the eigenvalues and eigenvectors.
-        eigvals, eigvecs = eig(stiffness_matrix, mass_matrix)
+        eigvals, eigvecs = eigh(stiffness_matrix, mass_matrix)
         # Calculates the eigen frequencies.
-        eigen_freq = np.sqrt(np.abs(eigvals)) / (2*np.pi)
+        eigvals = np.sqrt(np.abs(eigvals)) / (2*np.pi) if convert_to_frequencies else eigvals
         # Sorts the eigen frequencies and eigenvectors.
-        sort_indices = np.argsort(eigen_freq)
-        eigen_freq = eigen_freq[sort_indices]
-        eigvecs = eigvecs[:, sort_indices]
-        damped_freq = eigen_freq * np.sqrt(1 - 0.05**2) # Damping ratio of 0.05
+        if eigen_value_sort:
+            sort_indices = np.argsort(eigvals)
+            eigvals = eigvals[sort_indices]
+            eigvecs = eigvecs[:, sort_indices]
+            
+        damped_freq = eigvals * np.sqrt(1 - 0.05**2) # Damping ratio of 0.05
 
-        return eigen_freq, eigvecs, damped_freq
+        return eigvals, eigvecs, damped_freq
 
     def fix_vertices(self, fixed_vertex_IDs: Collection[int]) -> None:
         """
