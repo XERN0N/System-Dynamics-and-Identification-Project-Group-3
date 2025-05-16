@@ -1,6 +1,6 @@
 from SystemModels import Beam_Lattice
 
-def generate_original_model(number_of_elements: int = 15) -> Beam_Lattice:
+def generate_original_model(number_of_elements: int = 15, E_modulus: float = 2.1e11, density: float = 7850) -> Beam_Lattice:
     """
     Generates the original model "before" running the SSI.
     Sources:
@@ -10,6 +10,10 @@ def generate_original_model(number_of_elements: int = 15) -> Beam_Lattice:
     ----------
     number_of_elements : int, optional
         The number of elements in the vertical beam.
+    E_modulus : float, optional
+        The Young's modulus of the beam material.
+    density : float, optional
+        The density of the beam material.
 
     Returns
     -------
@@ -20,12 +24,12 @@ def generate_original_model(number_of_elements: int = 15) -> Beam_Lattice:
 
     model.add_beam_edge(
         number_of_elements=number_of_elements, 
-        E_modulus=2.1e11, 
+        E_modulus=E_modulus, 
         shear_modulus=7.9e10,
         primary_moment_of_area=1.94e-8,
         secondary_moment_of_area=1.02e-8,
         torsional_constant=2.29e-8,
-        density=7850, 
+        density=density, 
         cross_sectional_area=1.74e-4, 
         coordinates=[[0, 0, 0], [0, 0, 1.7]],
         edge_polar_rotation=0,
