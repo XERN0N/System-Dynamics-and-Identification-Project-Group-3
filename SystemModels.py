@@ -584,7 +584,7 @@ class Beam_Lattice:
         for block_row_number in range(number_of_timesteps):
             block_row_indices = slice(block_row_number*len(output_DOFs), block_row_number*len(output_DOFs)+len(output_DOFs))
             toeplitz_matrix[block_row_indices] = toeplitz_matrix_row
-            toeplitz_matrix_row = np.block([output_matrix @ state_matrix_powered @ input_matrix, toeplitz_matrix_row[:, len(input_DOFs):]])
+            toeplitz_matrix_row = np.block([output_matrix @ state_matrix_powered @ input_matrix, toeplitz_matrix_row[:, :-len(input_DOFs)]])
             state_matrix_powered @= state_matrix
         return toeplitz_matrix
 
