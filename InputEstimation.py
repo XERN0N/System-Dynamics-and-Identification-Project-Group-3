@@ -1,35 +1,18 @@
 from SystemModels import *
 from SystemSolvers import *
+from OriginalModel import generate_original_model
+import matplotlib.pyplot as plt
 
-system = Beam_Lattice()
+model = generate_original_model()
 
-primary_moment_of_area = 1.94e-8
-secondary_moment_of_area = 1.02e-8
-torsional_constant = 2.29e-8
-cross_sectional_area = 1.74e-4
+ouput_DOFs = np.linspace(18, 72, 4, dtype=int)
 
-system.add_beam_edge(
-    number_of_elements=5,
-    E_modulus=2.1e11,
-    shear_modulus=7.9e10,
-    primary_moment_of_area=primary_moment_of_area,
-    secondary_moment_of_area=secondary_moment_of_area,
-    torsional_constant=torsional_constant,
-    density=7850,
-    cross_sectional_area=cross_sectional_area,
-    coordinates=((0, 0, 0), (0, 0, 1.7)),
-    edge_polar_rotation=0
-)
+toeplitz_matrix = model.get_toeplitz_matrix('accelerance', (72,), ouput_DOFs, 1/427, 1000)
 
-system.fix_vertices((0,))
+left_singular_matrix, singular_values, right_singular_matrix = np.linalg.svd(toeplitz_matrix, full_matrices=False)
 
-toeplitz_matrix = system.get_toeplitz_matrix('accelerance', (18,), (6, 12, 18, 24), 1/427, 10_000)
+plt.scatter(range(len(singular_values)), singular_values)
 
-""" 
-start_time = time() 
-np.linalg.pinv(toplitz_matrix)
-end_time = time()
+plt.yscale('log')
 
-print(end_time - start_time)
- """
-print(toeplitz_matrix.shape)
+plt.show()
