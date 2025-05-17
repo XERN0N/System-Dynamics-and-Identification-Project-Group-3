@@ -34,7 +34,8 @@ def generate_original_model(number_of_elements: int = 15) -> Beam_Lattice:
         point_mass_location='end_vertex'
     )
     model.fix_vertices((0,))
-
+    model.set_damping_ratio(0.0015)
+    
     return model
 
 """ Determination of the default number of elements for the generate_original_model function. """
