@@ -4,12 +4,18 @@ from scipy.linalg import svd,logm
 import matplotlib.pyplot as plt
 from SystemModels import Beam_Lattice
 from scipy.signal import find_peaks
+import numpy.typing as npt
 
 
 np.set_printoptions(threshold=np.inf)
 np.set_printoptions(linewidth=10000, suppress=True, precision=3)
 
-def system_identifier(order_number,number_of_block_rows,output_data,time_step):
+def system_identifier(output_data: npt.ArrayLike,
+                      order_number: int = 6,
+                      number_of_block_rows: int = 24,
+                      time_step: float = 1 / 470
+                      ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+                      
     """
     This function calculates the modal parameters based on measured output.
     
@@ -22,8 +28,6 @@ def system_identifier(order_number,number_of_block_rows,output_data,time_step):
     Returns:
     tuple: A tuple containing the modal parameters (eigen frequency, damping ratio, and mode shape).
     """
-    if number_of_block_rows < order_number:
-        raise ValueError(f"Number of block rows (a={number_of_block_rows}) must be greater than (ns={order_number}).")
     
     #Datapoints 
     y = np.array(output_data)
@@ -125,14 +129,15 @@ A = np.array((np.linspace(1,50,50),np.linspace(1,50,50),np.linspace(1,50,50)))
 A = np.transpose(A)
 
 
-
+if __name__ == "__main__":
+    data = np.loadtxt('timeseries_gr3_FirstSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+    data2 = np.loadtxt('timeseries_gr3_SecondSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+    data3 = np.loadtxt('timeseries_gr3_FirstStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+    data4 = np.loadtxt('timeseries_gr3_SecondStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
 #bh = system_identifier(3, 9, A)
 #print(min(bh.shape))
 
-data = np.loadtxt('timeseries_gr3_FirstSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
-data2 = np.loadtxt('timeseries_gr3_SecondSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
-data3 = np.loadtxt('timeseries_gr3_FirstStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
-data4 = np.loadtxt('timeseries_gr3_SecondStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+
 
 #model_order_selector(1, 20, 30, data, 0.001079)
 #ef, dr , phi = system_identifier(16, 40, data, 0.001079)
@@ -277,8 +282,8 @@ def modelFRF(number_of_elements,accelerometer_location, axis):
     plt.show()
 
 
-
-modalexpander(data2,3,'x',30)
+if __name__ == "__main__":
+    modalexpander(data2,3,'x',30)
 #modelFRF(40,1,1)
 #fre1, bla, tis = system_identifier(8, 12, data, 0.001079)
 #print(fre1)
