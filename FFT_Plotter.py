@@ -119,19 +119,26 @@ def plot_signal(file_name, Acceleration_signal, Velocity_signal, Displacement_si
     
     #colors = ['b', 'r', 'g', 'm', 'b', 'r', 'g', 'm']
     print(signal_data[1][:5, :])
-    fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+    fig, axs = plt.subplots(3, 2, figsize=(16, 10), sharex=True)
 
     fig.suptitle(f"Sensor signals over time from file: {file_name}")    
-    for i, ax in enumerate(axs):
-        ax.set_title(signal_labels[i])
+    for i, signal_label in enumerate(signal_labels):
+        axs[i, 0].set_title(f"{signal_labels[i]} - Sensor - X-direction")
+        axs[i, 1].set_title(f"{signal_labels[i]} - Sensor - Y-direction")
 
-        for sensor in range(signal_data[i].shape[1]):
-            ax.plot(time, signal_data[i][:, sensor], label=f'Sensor {sensor+1}', color = colors[sensor])
-        ax.set_ylabel(y_labels[i])
-        ax.grid(True)
-        ax.legend()
+        for sensor in range(4):
+            axs[i, 0].plot(time, signal_data[i][:, sensor], label=f'Sensor {sensor+1}', color = colors[sensor])
+        for sensor in range(4, 8):
+            axs[i, 1].plot(time, signal_data[i][:, sensor], label=f'Sensor {sensor+4}', color = colors[sensor])
+        axs[i, 0].set_ylabel(y_labels[i])
+        axs[i, 0].grid(True)
+        axs[i, 0].legend()
+        axs[i, 1].set_ylabel(y_labels[i])
+        axs[i, 1].grid(True)
+        axs[i, 1].legend()
 
-    axs[-1].set_xlabel("Time (s)")
+    axs[-1, 0].set_xlabel("Time (s)")
+    axs[-1, 1].set_xlabel("Time (s)")
     plt.tight_layout()
     plt.show()
     #plt.savefig(file_name)
@@ -163,9 +170,9 @@ def process_file(file_path, sos_filter = None, hann = None, peak_width = None, m
 
     for i, col_name in enumerate(signal.columns):
         sig_data = signal[col_name].values
+        sig_data -= np.mean(sig_data)
         if sos_filter is not None:
             sig_data = sig.sosfilt(sos_filter, sig_data)
-        sig_data -= np.mean(sig_data)
         fft_bins[:, i], fft_results[:, i] = compute_fft(sig_data, delta_t, hann=hann)
 
         peaks_f, peaks_m = find_peak_frequencies(fft_bins[:, i], fft_results[:, i], peak_width=peak_width, min_amplitude=min_amplitude)
@@ -184,7 +191,7 @@ def main():
 
     folder_path = select_data_folder()
 
-    file_list = [f for f in os.listdir(folder_path) if f.lower().endswith(".txt")]
+    file_list = [f for f in os.listdir(folder_path) if f.lower().endswith(".txt") or f.lower().endswith(".csv")]
     if not file_list:
         print("No CSV files found in the selected directory.")
         return
@@ -192,8 +199,8 @@ def main():
     for file in file_list:
         file_path = os.path.join(folder_path, file)
         #test_filter = sig.butter(2, 0.01, 'highpass', output='sos')
-        test_filter = get_filter(0.1, 30, 2, "bandpass", 427)
-        process_file(file_path, sos_filter=None, hann=False, peak_width=5, min_amplitude=0.01)
+        test_filter = get_filter(0.5, 220, 2, "bandpass", 470)
+        process_file(file_path, sos_filter=test_filter, hann=False, peak_width=5, min_amplitude=0.05)
 
 
 
