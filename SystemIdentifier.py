@@ -145,21 +145,27 @@ def modalexpander(data, estimated_DOF, data_direction, number_of_elements):
         raise ValueError("The number_of_elements must be divisible by 5.")
     system = Beam_Lattice()
     e = number_of_elements//5
+    primary_moment_of_area = 1.94e-8
+    secondary_moment_of_area = 1.02e-8
+    torsional_constant = 2.29e-8
+    cross_sectional_area = 1.74e-4
+
     system.add_beam_edge(
-        number_of_elements=number_of_elements, 
-        E_modulus=2.1*10**11, 
-        shear_modulus=7.9*10**10,
-        primary_moment_of_area=2.157*10**-8,
-        secondary_moment_of_area=1.113*10**-8,
-        torsional_constant=3.7*10**-8,
-        density=7850, 
-        cross_sectional_area=1.737*10**-4, 
-        coordinates=[[0, 0, 0], [0, 0, 1.7]],
+        number_of_elements=number_of_elements,
+        E_modulus=2.1e11,
+        shear_modulus=7.9e10,
+        primary_moment_of_area=primary_moment_of_area,
+        secondary_moment_of_area=secondary_moment_of_area,
+        torsional_constant=torsional_constant,
+        density=7850,
+        cross_sectional_area=cross_sectional_area,
+        coordinates=((0, 0, 0), (0, 0, 1.7)),
         edge_polar_rotation=0,
         point_mass=1.31,
         point_mass_moment_of_inertias=(0,0,0),
         point_mass_location='end_vertex'
     )
+
     system.fix_vertices((0,))
     eigfreq, eigvec, damped = system.get_modal_param()
    
@@ -168,12 +174,12 @@ def modalexpander(data, estimated_DOF, data_direction, number_of_elements):
     print(eigvec.shape)
     if data_direction == 'x':
         mu1 = [6*e,12*e,18*e,24*e]
-        col_pick = [0,2,4]
+        col_pick = [2,4,6]
         #start = 0
         #end = 3
     if data_direction == 'y':
         mu1 = [7*e,13*e,19*e,25*e]
-        col_pick = [1,3,5]
+        col_pick = [3,5,7]
     mu2 = mu1[estimated_DOF]
     mu1.remove(mu2)
     
@@ -185,9 +191,14 @@ def modalexpander(data, estimated_DOF, data_direction, number_of_elements):
     least_squares = np.linalg.pinv(phi_mu1) @ measured_data
     
     estimated_data = phi_mu2 @ least_squares
+    
+    scaling_factor = np.linalg.lstsq(estimated_data.reshape(-1, 1), data[:, estimated_DOF].reshape(-1, 1), rcond=None)[0]
+    estimated_data_scaled = estimated_data * scaling_factor[0]  # scaling_factor is a 1-element array
+
+
 
     plt.plot(data[:, estimated_DOF], '--r', label='Measured')
-    plt.plot(estimated_data, 'k', label='Estimated', alpha=0.5)
+    plt.plot(estimated_data_scaled, 'k', label='Estimated', alpha=0.5)
     plt.xlabel("Time step")
     plt.ylabel("Acceleration")
     plt.legend()
@@ -195,27 +206,7 @@ def modalexpander(data, estimated_DOF, data_direction, number_of_elements):
     plt.show() 
 
 def modelFRF(number_of_elements,accelerometer_location, axis):
-    def modelFRF(number_of_elements, accelerometer_location, axis):
-        """
-        Calculate and plot the Frequency Response Function (FRF) for a beam lattice system.
-        Parameters:
-        ----------
-        number_of_elements : int
-            This is the number of elements in the model.
-        accelerometer_location : int
-            1 is the topmost accelerometer.
-        axis : int
-            0 is along the x-axis, it follows as structured in BeamLattice.
-        Returns:
-        -------
-        None
-            This function does not return a value. It generates a plot of the FRF magnitude.
-        Notes:
-        -----
-        - The function assumes a beam lattice system with specific material and geometric properties.
-        - The FRF is calculated based on modal parameters and system matrices.
-        - Peaks in the FRF magnitude are identified and annotated on the plot.
-        """
+  
 
     #The top most accelerometer is 1, the bottom most is 4
 
@@ -277,14 +268,14 @@ def modelFRF(number_of_elements,accelerometer_location, axis):
     plt.show()
 
 
-
-modalexpander(data2,3,'x',30)
-#modelFRF(40,1,1)
+#fre1, bla, tis = system_identifier(15,40,data2,0.001079)
+#modalexpander(data2,3,'x',15)
+modelFRF(40,1,0)
 #fre1, bla, tis = system_identifier(8, 12, data, 0.001079)
 #print(fre1)
 #print(bla)
 #print(tis)
-
+#Kig i lecture 10, for at lave FRF baseret på måle data i forced vibration
 
 '''
 a = 9
