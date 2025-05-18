@@ -182,7 +182,9 @@ def process_file(file_path, sos_filter = None, hann = None, peak_width = None, m
         #Calulate the integrated signals displacement and velocities
         Acceleration_signal[:, i] = sig_data
         Velocity_signal[:, i] = Signal_integration("Velocity", sig_data, delta_t)
+        Velocity_signal[:, i] = Velocity_signal[:, i] - np.mean(Velocity_signal[:, i])
         Displacement_signal[:, i] = Signal_integration("Displacement", Velocity_signal[:, i], delta_t)
+        Displacement_signal[:, i] = Displacement_signal[:, i] - np.mean(Displacement_signal[:, i])
 
     plot_signal(os.path.basename(file_path), Acceleration_signal, Velocity_signal, Displacement_signal, time=time)
     plot_fft_results(os.path.basename(file_path), fft_bins, fft_results, peak_freqs, peak_mags, delta_t)
