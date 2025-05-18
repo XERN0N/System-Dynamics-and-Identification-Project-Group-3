@@ -317,7 +317,13 @@ class Beam_Lattice:
         # Modal mass matrix.
         modal_mass_matrix = eigvecs.T @ system_mass_matrix @ eigvecs
         #norm_eigvecs = eigvecs @ np.diag(1/np.sqrt(np.diag(Mt)))
-        damping_ratio = 0.05
+        
+       
+        damping_ratio = 0.004
+
+        
+        
+
         # Modal damping matrix.
         modal_damping_matrix = np.eye(len(eigvals)) * (2 * damping_ratio * np.sqrt(np.abs(eigvals)) * modal_mass_matrix)
         # Damping matrix 
@@ -345,7 +351,7 @@ class Beam_Lattice:
         sort_indices = np.argsort(eigen_freq)
         eigen_freq = eigen_freq[sort_indices]
         eigvecs = eigvecs[:, sort_indices]
-        damped_freq = eigen_freq * np.sqrt(1 - 0.05**2) # Damping ratio of 0.05
+        damped_freq = eigen_freq * np.sqrt(1 - 0.04**2) # Damping ratio of 0.05
 
         return eigen_freq, eigvecs, damped_freq
 
