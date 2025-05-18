@@ -75,7 +75,7 @@ def generate_original_model(number_of_elements: int = 2, E_modulus: float = 2.1e
         vertex_IDs=7,
         edge_polar_rotation=0,
         point_mass=1.31,
-        point_mass_moment_of_inertias=(0,0,0),
+        point_mass_moment_of_inertias=(0.0004384, 0.0011301, 0.000861),
         point_mass_location='end_vertex'
     )
 
