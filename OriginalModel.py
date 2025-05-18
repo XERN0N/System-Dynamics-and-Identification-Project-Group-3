@@ -94,9 +94,9 @@ if __name__ == "__main__":
     norms = []
     DOFs = []
     for number_of_element in number_of_elements:
-        model = generate_original_model(number_of_element)
+        model_primary = generate_original_model(number_of_element)
 
-        state_matrix, _, output_matrix, _, = model.get_state_space_matrices('receptence', output_DOFs=np.concatenate((Vertex_DOFs.output_primary_DOFs.value, 
+        state_matrix, _, output_matrix, _, = model_primary.get_state_space_matrices('receptence', output_DOFs=np.concatenate((Vertex_DOFs.output_primary_DOFs.value, 
                                                                                                                       Vertex_DOFs.output_secondary_DOFs.value)))
 
         eigen_values, eigen_vectors = np.linalg.eig(state_matrix)
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         mode_shapes = output_matrix @ eigen_vectors
         
         norms.append(np.linalg.matrix_norm(mode_shapes[:, :5]))
-        DOFs.append(model.system_DOF - len(model.fixed_DOFs))
+        DOFs.append(model_primary.system_DOF - len(model_primary.fixed_DOFs))
 
     plt.plot(DOFs, norms, marker='o')
     plt.title("Matrix norm of the first 5 modes as a function of DOF")
