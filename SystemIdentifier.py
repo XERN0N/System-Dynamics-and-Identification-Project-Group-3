@@ -129,10 +129,14 @@ A = np.transpose(A)
 #bh = system_identifier(3, 9, A)
 #print(min(bh.shape))
 
-data = np.loadtxt('timeseries_gr3_FirstSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
-data2 = np.loadtxt('timeseries_gr3_SecondSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
-data3 = np.loadtxt('timeseries_gr3_FirstStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
-data4 = np.loadtxt('timeseries_gr3_SecondStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+data1 = np.loadtxt('Sorted timeseries/Free/1D/Calibrated/weak_axis_data/timeseries_gr3_FirstSoft.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+data2 = np.loadtxt('Sorted timeseries/Free/1D/Calibrated/weak_axis_data/timeseries_gr3_SecondSoft_2nd.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+data3 = np.loadtxt('Sorted timeseries/Free/1D/Calibrated/strong_axis_data/timeseries_gr3_FirstStiff.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+data4 = np.loadtxt('Sorted timeseries/Free/1D/Calibrated/strong_axis_data/timeseries_gr3_SecondStiff_2nd.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+data5 = np.loadtxt('Sorted timeseries/Free/1D/Calibrated/Torsional_axis_data/X/timeseries_gr3_twisting_2nd.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+#data5 = np.loadtxt('timeseries_serial_output_gr3_SecondSoft_2d.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+#data6 = np.loadtxt('timeseries_serial_output_gr3_twisting_2d.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
+#data7 = np.loadtxt('timeseries_serial_output_gr3_SecondStiff_2d.txt', delimiter=',', skiprows=1, usecols=(0, 1, 2, 3))
 
 #model_order_selector(1, 20, 30, data, 0.001079)
 #ef, dr , phi = system_identifier(16, 40, data, 0.001079)
@@ -162,7 +166,7 @@ def modalexpander(data, estimated_DOF, data_direction, number_of_elements):
         coordinates=((0, 0, 0), (0, 0, 1.7)),
         edge_polar_rotation=0,
         point_mass=1.31,
-        point_mass_moment_of_inertias=(0,0,0),
+        point_mass_moment_of_inertias=(0.0004384,0.0011301,0.000861),
         point_mass_location='end_vertex'
     )
 
@@ -170,7 +174,7 @@ def modalexpander(data, estimated_DOF, data_direction, number_of_elements):
     eigfreq, eigvec, damped = system.get_modal_param()
    
     print(eigvec[:, :15])
-    print(eigfreq[:])
+    print(eigfreq[:15])
     print(eigvec.shape)
     if data_direction == 'x':
         mu1 = [6*e,12*e,18*e,24*e]
@@ -227,7 +231,7 @@ def modelFRF(number_of_elements,accelerometer_location, axis):
         coordinates=[[0, 0, 0], [0, 0, 1.7]],
         edge_polar_rotation=0,
         point_mass=1.31,
-        point_mass_moment_of_inertias=(0,0,0),
+        point_mass_moment_of_inertias=(0.0004384,0.0011301,0.000861),
         point_mass_location='end_vertex'
     )
     system.fix_vertices((0,))
@@ -268,14 +272,51 @@ def modelFRF(number_of_elements,accelerometer_location, axis):
     plt.show()
 
 
-#fre1, bla, tis = system_identifier(15,40,data2,0.001079)
+#fre1, bla, tis = system_identifier(20,50,data4,0.001079)
+#[    4.218     5.817    36.564    50.426   112.377   154.981   230.919   318.463   392.557   410.525   503.7     541.382   597.501 ]
+model_f = [4.217,     5.816,    36.424,    50.279,   111.192,   153.74,    216.241,   225.925,   313.277,   377.456,   503.7,     525.906,   559.812]
+
 #modalexpander(data2,3,'x',15)
-modelFRF(40,1,0)
-#fre1, bla, tis = system_identifier(8, 12, data, 0.001079)
+#modelFRF(40,1,1)
+#fre1, _, _ = system_identifier(30, 50, data, 0.001079)
+
 #print(fre1)
 #print(bla)
 #print(tis)
 #Kig i lecture 10, for at lave FRF baseret på måle data i forced vibration
+#model_order_selector(10,30,50,data6,0.001079)
+
+
+datasets = [data1, data2, data3, data4, data5]
+dataset_labels = [f"data{i+1}" for i in range(len(datasets))]
+
+# Parameters for system_identifier
+
+dt = 0.001079
+
+# Storage for eigenfrequencies
+all_frequencies = []
+
+# Loop through datasets
+for i, data in enumerate(datasets):
+    freqs, _, _ = system_identifier(30, 50, data, dt)
+    all_frequencies.append(freqs)
+
+# Plotting
+plt.figure(figsize=(10, 6))
+for idx, freqs in enumerate(all_frequencies):
+    y = np.full_like(freqs, idx + 1)  # assign y-position based on dataset number
+    plt.plot(freqs, y, 'o', label=dataset_labels[idx])
+for f in model_f:
+    plt.axvline(f, color='red', linestyle='--', linewidth=1, alpha=0.7)
+plt.yticks(ticks=range(1, 6), labels=['weak-axis','weak-axis-hammer','strong-axis','strong-axis-hammer','twisting'])
+plt.xlabel("Eigen-frequency [Hz]")
+plt.ylabel("Dataset")
+plt.title("Eigenfrequencies per dataset")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
 
 '''
 a = 9
