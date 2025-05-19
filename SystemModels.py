@@ -3,7 +3,7 @@ import numpy.typing as npt
 from typing import Callable, Literal
 import igraph as ig
 from collections.abc import Collection, Generator
-from scipy.linalg import block_diag, eigh
+from scipy.linalg import block_diag, eigh, eig
 from warnings import deprecated
 from contextlib import contextmanager
 from scipy.linalg import expm
@@ -42,9 +42,12 @@ class Beam_Lattice:
         The total DOF of the system.
     fixed_DOFs : numpy array
         A list of the DOF's that have a fixed boundary condition applied to.
+    damping_ratio : float
+        The damping ratio applied to all modes.
     """
     def __init__(self) -> None:
         self.graph = ig.Graph()
+        self.damping_ratio = 0.0
 
     def add_beam_edge(self, number_of_elements: int, E_modulus: npt.ArrayLike, shear_modulus: npt.ArrayLike, primary_moment_of_area: npt.ArrayLike, 
                       secondary_moment_of_area: npt.ArrayLike, torsional_constant: npt.ArrayLike, density: npt.ArrayLike, 
@@ -262,6 +265,17 @@ class Beam_Lattice:
         """
         return 6*(np.sum(self.graph.es['number_of_elements'], dtype=int) + self.graph.vcount() - self.graph.ecount())
 
+    def set_damping_ratio(self, damping_ratio: float) -> None:
+        """
+        Sets the damping ratio of every mode.
+
+        Parameters
+        ----------
+        damping_ratio : float
+            The damping ratio for all modes.
+        """
+        self.damping_ratio = damping_ratio
+
     def get_system_level_matrices(self, include_fixed_vertices: bool = False) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Calculates the system-level mass-, stiffness and damping matrices by combining all edge matrices.
@@ -314,19 +328,17 @@ class Beam_Lattice:
             system_stiffness_matrix = np.delete(system_stiffness_matrix, fixed_DOFs, axis=1)
 
         # Damping ready stuff here.
-        eigvals, eigvecs = eigh(system_stiffness_matrix, system_mass_matrix)
+        eigvals, eigvecs = eig(system_stiffness_matrix, system_mass_matrix)
         # Modal mass matrix.
         modal_mass_matrix = eigvecs.T @ system_mass_matrix @ eigvecs
-        #norm_eigvecs = eigvecs @ np.diag(1/np.sqrt(np.diag(Mt)))
-        damping_ratio = 0.05
         # Modal damping matrix.
-        modal_damping_matrix = np.eye(len(eigvals)) * (2 * damping_ratio * np.sqrt(np.abs(eigvals)) * modal_mass_matrix)
+        modal_damping_matrix = np.eye(len(eigvals)) * (2 * self.damping_ratio * np.sqrt(np.abs(eigvals)) * modal_mass_matrix)
         # Damping matrix 
         system_damping_matrix = eigvecs @ modal_damping_matrix @ eigvecs.T   
         
         return system_mass_matrix, system_stiffness_matrix, system_damping_matrix
     
-    def get_modal_param(self, eigen_value_sort: bool = True, convert_to_frequencies: bool = True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    def get_modal_param(self, eigen_value_sort: bool = True, convert_to_frequencies: bool = True, normalize: bool = False) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """
         Calculates the modal parameters of the system.
 
@@ -336,6 +348,8 @@ class Beam_Lattice:
             Sort the eigen values and vectors according to the eigen values. Default true.
         convert_to_frequencies : bool, optional
             Convert the eigen values to frequencies (in Hz). Default true.
+        normalize : bool, optional
+            Whether the eigen vectors are mass normalized or not. Default is false.
 
         Returns
         -------
@@ -345,7 +359,7 @@ class Beam_Lattice:
         # Gets the system level matrices.
         mass_matrix, stiffness_matrix, _= self.get_system_level_matrices()
         # Calculates the eigenvalues and eigenvectors.
-        eigvals, eigvecs = eigh(stiffness_matrix, mass_matrix)
+        eigvals, eigvecs = eigh(stiffness_matrix, mass_matrix) if normalize else eig(stiffness_matrix, mass_matrix)
         # Calculates the eigen frequencies.
         eigvals = np.sqrt(np.abs(eigvals)) / (2*np.pi) if convert_to_frequencies else eigvals
         # Sorts the eigen frequencies and eigenvectors.
@@ -354,7 +368,7 @@ class Beam_Lattice:
             eigvals = eigvals[sort_indices]
             eigvecs = eigvecs[:, sort_indices]
             
-        damped_freq = eigvals * np.sqrt(1 - 0.05**2) # Damping ratio of 0.05
+        damped_freq = eigvals * np.sqrt(1 - self.damping_ratio**2) # Damping ratio of 0.05
 
         return eigvals, eigvecs, damped_freq
 
