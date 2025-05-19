@@ -8,23 +8,20 @@ from SystemModels import Beam_Lattice
 from OriginalModel import generate_original_model
 from SystemIdentifier import system_identifier
 
-
-model = generate_original_model()
-
 # Function to compute the Jacobian matrix
 def compute_jacobian(phi, omega, E, rho):
-    delta_E = 1e-1
+    delta_E = 1e-2
 
     # Base model
     model = generate_original_model(density=rho, E_modulus=E)
     M_base, K_base, _ = model.get_system_level_matrices()
 
-    # Perturb E
+    # Perturb E [ΔK/ΔE]
     model_E = generate_original_model(density=rho,E_modulus= E + delta_E)
     _, K_E, _ = model_E.get_system_level_matrices()
-    dK_dE = (K_E - K_base) / delta_E
+    dK_dE = (K_E - K_base) / delta_E # Finite difference approximation
 
-    # Perturb rho
+    # Perturb rho [ΔM/Δρ]
     dM_drho = M_base / rho
 
     # Compute Jacobian
@@ -49,24 +46,17 @@ def newton_update(theta0: npt.NDArray, omega_target, eps=1e-6, it_limit=1000, al
         omega, phi,_ = model.get_modal_param(eigen_value_sort=False, convert_to_frequencies=False, normalize=True)
         omega = np.sqrt(omega[:5])
         J = compute_jacobian(phi, omega, E, rho)
-        update_step = pinv(J) @ (omega_target - omega)
-
-        theta_k = theta_hist[-1] + alpha * update_step  # Damped update
-        # theta_k = np.maximum(theta_k, np.array([1e9, 100.0]))  # Clamp E and ρ to physical values
-
+        update_step = theta_hist[-1] + pinv(J) @ (omega_target - omega)
+        theta_k = alpha * update_step  # Damped update (if necessary)
         delta = np.max(np.abs((theta_k - theta_hist[-1]) / (theta_hist[-1] + 1e-12)))
         theta_hist.append(theta_k)
-
         k += 1
-
         if k > it_limit:
             print("Not converged within iteration limit")
             break
 
     print(f"Convergence after {k-1} iterations")
     return np.array(theta_hist).T
-
-
 
 if __name__ == "__main__":
 
