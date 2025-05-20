@@ -66,9 +66,7 @@ def newton_update(theta0: dict[str, Any | None], omega_target, eps=1e-6, it_limi
         parameter_update = pinv(Jacobian) @ (omega_target - omega)
         for i, (key, value) in enumerate(theta_old.items()):
             theta_new.update({key: value + parameter_update[i]})
-
-        delta = np.max(np.abs((np.array(list(theta_new.values())) - np.array(list(theta_old.values()))) / (np.array(list(theta_old.values())) + 1e-12)))
-        
+        delta = np.max(np.abs((np.array(list(theta_new.values())) - list(theta_old.values()))) / np.abs(list(theta_old.values())))
         theta_old = theta_new
 
         for key, value in theta_new.items():
