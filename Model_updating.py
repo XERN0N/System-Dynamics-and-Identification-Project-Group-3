@@ -2,11 +2,8 @@
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
-import pandas as pd
-from scipy.linalg import eigh, pinv
-from SystemModels import Beam_Lattice
-from OriginalModel import generate_original_model
-from SystemIdentifier import system_identifier
+from scipy.linalg import pinv
+from OriginalModel import *
 from typing import Any
 import inspect
 
@@ -46,12 +43,13 @@ def compute_jacobian(phi, omega, **model_parameters):
 # Function to perform the Newton update
 def newton_update(theta0: dict[str, Any | None], omega_target, eps=1e-6, it_limit=100):
 
-    model_signature = inspect.signature(generate_original_model)
+    default_values = Default_beam_edge_parameters.default_beam_edge_parameters.value.copy()
+    default_values.update(Default_beam_edge_parameters.default_point_mass_parameters.value.copy())
 
     theta_hist: dict[str, list[Any]] = dict()
     for key, value in theta0.items():
         if value is None:
-            value = model_signature.parameters[key].default
+            value = default_values[key]
             theta0[key] = value
         theta_hist.update({key: [value]})
     

@@ -7,7 +7,26 @@ class Vertex_DOFs(Enum):
     input_primary_DOFs = (13, 25, 37)
     input_secondary_DOFs = (12, 24, 36)
 
-def generate_original_model(number_of_elements: int = 2, E_modulus: float = 2.1e11, density: float = 7850) -> Beam_Lattice:
+class Default_beam_edge_parameters(Enum):
+    default_beam_edge_parameters = {
+        'number_of_elements': 2, 
+        'E_modulus': 2.1e11, 
+        'shear_modulus': 7.9e10,
+        'primary_moment_of_area': 1.94e-8,
+        'secondary_moment_of_area': 1.02e-8,
+        'torsional_constant': 2.29e-8,
+        'density': 7850, 
+        'cross_sectional_area': 1.74e-4, 
+        'edge_polar_rotation': 0
+    }
+
+    default_point_mass_parameters = {
+        'point_mass': 1.31,
+        'point_mass_moment_of_inertias': (0, 0, 0),
+        'point_mass_location': 'end_vertex'
+    }
+
+def generate_original_model(**beam_edge_parameters) -> Beam_Lattice:
     """
     Generates the original model "before" running the SSI.
     Sources:
@@ -15,68 +34,50 @@ def generate_original_model(number_of_elements: int = 2, E_modulus: float = 2.1e
     
     Parameters
     ----------
-    number_of_elements : int, optional
-        The number of elements between each vertex where a vertex is placed at each input and output location.
-    E_modulus : float, optional
-        The modulus of elasticity for the beam [Pa]. Default 210 GPa.
-    density : float, optional
-        The density of the beam material [kg/m^3]. Default 7850 kg/m^3.
+    beam_edge_parameters : kwargs, optional
+        Parameters for the Beam_Lattice method 'add_beam_edge'. If certain parameters are not specified, default values are used.
+        Parameters given that are not in the method are ignored.
 
     Returns
     -------
     Beam_Lattice
         The model.
     """
+
+    default_beam_edge_parameters = Default_beam_edge_parameters.default_beam_edge_parameters.value
+
+    default_point_mass_parameters = Default_beam_edge_parameters.default_point_mass_parameters.value
+
+    for key, value in beam_edge_parameters.items():
+        if key in default_beam_edge_parameters.keys():
+            default_beam_edge_parameters.update({key: value})
+        elif key in default_point_mass_parameters.keys():
+            default_point_mass_parameters.update({key: value})
+
     model = Beam_Lattice()
 
     vertex_heights = (0.34, 0.68, 0.81, 1.02, 1.24, 1.36, 1.60, 1.715)
 
     # Start beam.
-    model.add_beam_edge(
-        number_of_elements=number_of_elements, 
-        E_modulus=E_modulus, 
-        shear_modulus=7.9e10,
-        primary_moment_of_area=1.94e-8,
-        secondary_moment_of_area=1.02e-8,
-        torsional_constant=2.29e-8,
-        density=density, 
-        cross_sectional_area=1.74e-4, 
+    model.add_beam_edge( 
         coordinates=((0, 0, 0), (0, 0, vertex_heights[0])),
-        edge_polar_rotation=0
+        **default_beam_edge_parameters
     )
 
     # Bulk beams.
     for i, vertex_height in enumerate(vertex_heights[1:-1]):
-        model.add_beam_edge(
-            number_of_elements=number_of_elements, 
-            E_modulus=E_modulus, 
-            shear_modulus=7.9e10,
-            primary_moment_of_area=1.94e-8,
-            secondary_moment_of_area=1.02e-8,
-            torsional_constant=2.29e-8,
-            density=density, 
-            cross_sectional_area=1.74e-4, 
+        model.add_beam_edge( 
             coordinates=(0, 0, vertex_height),
             vertex_IDs=i+1,
-            edge_polar_rotation=0
+            **default_beam_edge_parameters
         )
 
     # End beam.
     model.add_beam_edge(
-        number_of_elements=number_of_elements, 
-        E_modulus=E_modulus, 
-        shear_modulus=7.9e10,
-        primary_moment_of_area=1.94e-8,
-        secondary_moment_of_area=1.02e-8,
-        torsional_constant=2.29e-8,
-        density=density, 
-        cross_sectional_area=1.74e-4, 
         coordinates=(0, 0, vertex_heights[-1]),
         vertex_IDs=7,
-        edge_polar_rotation=0,
-        point_mass=1.31,
-        point_mass_moment_of_inertias=(0,0,0),
-        point_mass_location='end_vertex'
+        **default_point_mass_parameters,
+        **default_beam_edge_parameters
     )
 
     model.fix_vertices((0,))
