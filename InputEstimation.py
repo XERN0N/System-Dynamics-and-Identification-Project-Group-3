@@ -3,108 +3,127 @@ from SystemSolvers import *
 from OriginalModel import generate_original_model
 import matplotlib.pyplot as plt
 import pandas as pd
+
+#------------------
 from scipy import linalg
 from sklearn.linear_model import Lasso
-
-#------------------
+from tqdm import tqdm
 import time
+from datetime import datetime
+import os
 #------------------
-
-np.set_printoptions(linewidth=1000, precision=2)
 
 model = generate_original_model()
 
 ouput_DOFs = np.linspace(19, 73, 4, dtype=int)
 
-stacked_output_hammer = pd.read_csv("Sorted timeseries/Forced/1D/Hammer/Calibrated/X/timeseries_gr3_1D_x_resonant2025-03-27-10-56-47.csv.csv")
-time_vector_hammer = stacked_output_hammer['Time (s)']
-hammer_data = stacked_output_hammer["Hammer force [N]"]
-stacked_output_read = pd.read_csv("Sorted timeseries/Forced/1D/Accelerometer/Calibrated/gr3_1D_x_resonant.csv", nrows=2000, skiprows=range(1, 7001))
+hammer_delay = 14150 #compensate for delay between signals
+stacked_output_hammer = pd.read_csv(r"Sorted timeseries\Test gruppe 1\Hammer kalibreret\timeseries_hammer_gr1_y_dir_160_4hit.csv.csv", nrows=27000)
+time_vector_hammer = stacked_output_hammer['Time (s)'].values
+hammer_data = stacked_output_hammer["Hammer force [N]"].values
 
-time_vector = stacked_output_read['Time (us)']
-stacked_output = np.empty(len(time_vector)*4)
-toeplitz_matrix = model.get_toeplitz_matrix('accelerance', (85,), ouput_DOFs, 1/927, len(stacked_output_read['Time (us)']))
+stacked_output_read = pd.read_csv(r"Sorted timeseries\Test gruppe 1\Accelerometer kalibreret\timeseries_gr1_y_dir_160_4hit.csv", nrows=3200)
+time_vector = stacked_output_read['Time (us)'].values
 
-for i, rows in enumerate(stacked_output_read["Time (us)"]):
-    stacked_output[i*4:i*4+4] = stacked_output_read.iloc[[i], [3, 4, 5, 6,]].values
+#------------------- WINDOWING----------------
 
+window_length = 3200
+window_step = 3200
 
-LN = stacked_output #assume z0 = 0
+#alphas = np.logspace(-5, -3, 1000)
 
-left_singular_values, singular_values, right_singular_values = np.linalg.svd(toeplitz_matrix)
+sensor_data = stacked_output_read.iloc[:, [3, 4, 5, 6,]].values
+total_length = len(sensor_data)
+window_start_indices = range(0, len(sensor_data) - window_length +1, window_step)
 
-from sklearn.linear_model import Lasso
+#Preallocate zeros (has to be zeros to avoid empty values)
+input_reconstruction_array = np.zeros(total_length)
+lasso_full_estimated_inputs = np.zeros(total_length)
+lasso_estimated_inputs_truncated = np.zeros(total_length)
+number_of_overlaps = np.zeros(total_length)
 
+#Get toeplitz matrix (time invariant)
+toeplitz_matrix = model.get_toeplitz_matrix('accelerance', (85,), ouput_DOFs, 1/927, window_length)
+left_singular_values, singular_values, right_singular_values = linalg.svd(toeplitz_matrix, full_matrices=False, overwrite_a=False)
 
-for alpha in [1e-4, 9e-5, 8e-5, 7e-5]:
-    model = Lasso(alpha=alpha, positive=True, fit_intercept=False, max_iter=10000, tol=1e-6)
-    model.fit(toeplitz_matrix, LN)
-    u_hat = model.coef_
+for start in tqdm(window_start_indices, desc="Processing input reconstruction windows"):
+    #Get window
+    window = sensor_data[start : start + window_length]
+    #calculations from lecture 26 eq (9)
+    #Window flattened to get 1D Ln vector assuming z0=0
+    LN = np.empty(window_length*4)
+    LN = window.flatten()
 
-
-    print(u_hat)
-
-    """ # optional clean-up:
-    thr = 0.05 * u_hat.max()
-    u_hat[u_hat < thr] = 0 """
-
-
-
-    """ s = int(len(singular_values) * 0.5)
-
-    projected_values = left_singular_values.T @ stacked_output
-
-    estimated_inputs = (projected_values[:s] / singular_values[:s]) @ right_singular_values[:s, :] """
-
-
-
-
-
-
-
-    """
-    reconstructed_input = np.empty(len(time_vector))
-    reconstructed_input_estimate = np.empty(len(time_vector))
-
-    inverted_toeplitz = linalg.pinv(toeplitz_matrix)
-    reconstructed_input = inverted_toeplitz @ stacked_output
-
-    inverted_toeplitz_estimate = linalg.pinv(toeplitz_matrix, atol=0.60)
-
-    reconstructed_input_estimate = inverted_toeplitz_estimate @ stacked_output
-    #condition_number_estimate = np.linalg.cond(inverted_toeplitz_estimate)
-
-    Lasso = Lasso(alpha=0.01, max_iter=1000, positive=True)
-    Lasso.fit(toeplitz_matrix, stacked_output)
-    U_est = Lasso.coef_ 
-
-
-    condition_number_estimate = np.linalg.cond(toeplitz_matrix)
-    #print(condition_number)
-    print(condition_number_estimate)
-
-
-
-    left_singular_matrix, singular_values, right_singular_matrix = np.linalg.svd(toeplitz_matrix, full_matrices=False)
-
-    condition_number = singular_values[0] / singular_values[-1]
-    print(condition_number)
-    """
-
+    #amount of singular values to include for regularization
+    s = 3150 #from L-curve plot
+    #s = int(len(singular_values) * 0.9) #relative version
     
-    plt.plot(time_vector, u_hat, label="Estimated inputs")
-plt.plot(time_vector, stacked_output_read["Sensor 4 - X"], label="stacked")
-#plt.plot(time_vector, reconstructed_input, label="reconstructed")
-#plt.plot(time_vector, reconstructed_input_estimate, label="reconstructed_estimate")
-#plt.plot(time_vector, U_est, label="U_estimate")
-plt.plot(time_vector_hammer, hammer_data, label="Hammer_data")
+    #Vectorized version of mu_i.T * LN 
+    projected_values = left_singular_values.T @ LN
+    #divide by sigma_i and multiply by v_i
+    estimated_inputs = (projected_values[:s] / singular_values[:s]) @ right_singular_values[:s, :]
+    toeplitz_matrix_svd_approx = (left_singular_values[:, :s] @ np.diag(singular_values[:s]) @ right_singular_values[:s, :])
+
+    #collect windowed values and insert into final vector
+    input_reconstruction_array[start : start + window_length] += estimated_inputs[:window_length]
+    number_of_overlaps[start : start + window_length] += 1
+    
+    #Lasso regularization on toeplitz
+    start_time = time.time()
+    lasso_full = Lasso(1e-5, positive=True, tol=1e-2, max_iter=100000, precompute=True, warm_start=False)
+    lasso_full.fit(toeplitz_matrix, LN)
+    lasso_full_coeffs = lasso_full.coef_
+    lasso_full_estimated_inputs[start : start + window_length] += lasso_full_coeffs[:window_length]
+    end_time = time.time()
+    print("\n", end_time-start_time, lasso_full.n_iter_, lasso_full.tol, lasso_full.alpha)
+    print(np.linalg.cond(lasso_full_coeffs))
+
+    #Lasso regularization on truncated toeplitz
+    start_time = time.time()
+    lasso_truncated = Lasso(2e-5, positive=True, tol=1e-2, max_iter=100000, precompute=True, warm_start=False)
+    lasso_truncated.fit(toeplitz_matrix_svd_approx, LN)
+    lasso_truncated_coeffs = lasso_truncated.coef_
+    lasso_estimated_inputs_truncated[start : start + window_length] += lasso_truncated_coeffs[:window_length]
+    end_time = time.time()
+    print(end_time-start_time, lasso_truncated.n_iter_, lasso_truncated.tol, lasso_truncated.alpha)
+    print(np.linalg.cond(lasso_full_coeffs))
 
 
+#correct if no overlaps and take average
+number_of_overlaps[number_of_overlaps == 0] = 1
+input_reconstruction_svd_truncated = input_reconstruction_array / number_of_overlaps
+input_reconstruction_lasso_full = lasso_full_estimated_inputs / number_of_overlaps
+input_reconstruction_truncated = lasso_estimated_inputs_truncated / number_of_overlaps
 
+#------------------PLOTS----------------------------
+#Time
+timestamp = datetime.now().strftime("%H%M%S")
+# Create directory if it doesn't exist
+output_folder = "plots"
+os.makedirs(output_folder, exist_ok=True)
+dpi = 800
+figsize = (18, 12)
 
-
-    #plt.scatter(range(len(singular_values)), singular_values)
+plt.figure(figsize=figsize)
+plt.plot(time_vector_hammer[:-hammer_delay], hammer_data[hammer_delay:], label="Hammer data", color='black', alpha=0.4)
+plt.plot(time_vector, stacked_output_read["Sensor 4 - X"], label="Sensor values for top sensor", alpha=0.3, color='red')
+plt.plot(time_vector, input_reconstruction_svd_truncated, label="Input reconstruction truncated", alpha=0.4, color='cyan')
+plt.plot(time_vector, input_reconstruction_lasso_full, label="Input reconstruction lasso full", color='blue')
+plt.plot(time_vector, input_reconstruction_truncated, label="Input reconstruction lasso truncated", color='red', linestyle='--')
 
 plt.yscale('linear')
+plt.ylim([-50, 230])
+plt.xlim([0, 3.5])
 plt.legend()
+plt.savefig(os.path.join(output_folder, f"Reconstruction_vs_Hammer_{timestamp}.png"), dpi=dpi)
+plt.show()
+
+# --- L-curve loglog plot for singular values ---
+plt.figure(figsize=figsize)
+plt.loglog(singular_values)
+plt.title("L-curve (Singular Values, log-log scale)")
+plt.xlabel("Index")
+plt.ylabel("Singular Value")
+plt.grid(True, which="both", ls="--")
+plt.savefig(os.path.join(output_folder, f"Lcurve_singular_values_{timestamp}.png"), dpi=dpi)
 plt.show()
