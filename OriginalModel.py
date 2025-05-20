@@ -36,7 +36,6 @@ def generate_original_model(**beam_edge_parameters) -> Beam_Lattice:
     ----------
     beam_edge_parameters : kwargs, optional
         Parameters for the Beam_Lattice method 'add_beam_edge'. If certain parameters are not specified, default values are used.
-        Parameters given that are not in the method are ignored.
 
     Returns
     -------
@@ -53,6 +52,8 @@ def generate_original_model(**beam_edge_parameters) -> Beam_Lattice:
             default_beam_edge_parameters.update({key: value})
         elif key in default_point_mass_parameters.keys():
             default_point_mass_parameters.update({key: value})
+        else:
+            raise KeyError(f"Parameter '{key}' is not a parameter for 'add_beam_edge'.")
 
     model = Beam_Lattice()
 
