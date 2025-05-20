@@ -22,7 +22,7 @@ class Default_beam_edge_parameters(Enum):
 
     default_point_mass_parameters = {
         'point_mass': 1.31,
-        'point_mass_moment_of_inertias': (0, 0, 0),
+        'point_mass_moment_of_inertias': (0.0004384, 0.0011301, 0.000861),
         'point_mass_location': 'end_vertex'
     }
 
