@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import os as os
-import re
 import tkinter as tk
 from tkinter import filedialog
 

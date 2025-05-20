@@ -1,5 +1,6 @@
 from SystemModels import *
 from SystemSolvers import *
+from UpdatedModel import *
 from OriginalModel import generate_original_model
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -13,7 +14,8 @@ from datetime import datetime
 import os
 #------------------
 
-model = generate_original_model()
+#model = generate_original_model()
+model = generate_updated_model()
 
 ouput_DOFs = np.linspace(19, 73, 4, dtype=int)
 
@@ -76,7 +78,6 @@ for start in tqdm(window_start_indices, desc="Processing input reconstruction wi
     lasso_full_estimated_inputs[start : start + window_length] += lasso_full_coeffs[:window_length]
     end_time = time.time()
     print("\n", end_time-start_time, lasso_full.n_iter_, lasso_full.tol, lasso_full.alpha)
-    print(np.linalg.cond(lasso_full_coeffs))
 
     #Lasso regularization on truncated toeplitz
     start_time = time.time()
@@ -86,7 +87,6 @@ for start in tqdm(window_start_indices, desc="Processing input reconstruction wi
     lasso_estimated_inputs_truncated[start : start + window_length] += lasso_truncated_coeffs[:window_length]
     end_time = time.time()
     print(end_time-start_time, lasso_truncated.n_iter_, lasso_truncated.tol, lasso_truncated.alpha)
-    print(np.linalg.cond(lasso_full_coeffs))
 
 
 #correct if no overlaps and take average
@@ -107,9 +107,9 @@ figsize = (18, 12)
 plt.figure(figsize=figsize)
 plt.plot(time_vector_hammer[:-hammer_delay], hammer_data[hammer_delay:], label="Hammer data", color='black', alpha=0.4)
 plt.plot(time_vector, stacked_output_read["Sensor 4 - X"], label="Sensor values for top sensor", alpha=0.3, color='red')
-plt.plot(time_vector, input_reconstruction_svd_truncated, label="Input reconstruction truncated", alpha=0.4, color='cyan')
+plt.plot(time_vector, input_reconstruction_svd_truncated, label=f"Input reconstruction truncated at value {s+1}", alpha=0.4, color='cyan')
 plt.plot(time_vector, input_reconstruction_lasso_full, label="Input reconstruction lasso full", color='blue')
-plt.plot(time_vector, input_reconstruction_truncated, label="Input reconstruction lasso truncated", color='red', linestyle='--')
+plt.plot(time_vector, input_reconstruction_truncated, label=f"Input reconstruction lasso truncated at value {s+1}", color='red', linestyle='--')
 
 plt.yscale('linear')
 plt.ylim([-50, 230])
