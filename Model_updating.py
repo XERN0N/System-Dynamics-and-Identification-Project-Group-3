@@ -7,109 +7,105 @@ from scipy.linalg import eigh, pinv
 from SystemModels import Beam_Lattice
 from OriginalModel import generate_original_model
 from SystemIdentifier import system_identifier
+from typing import Any
+import inspect
 
 # Function to compute the Jacobian matrix
-def compute_jacobian(phi, omega, E, rho):
-    delta_E = 1e-2
-
+def compute_jacobian(phi, omega, **model_parameters):
+    perturbations = list()
+    list_of_perturbed_model_parameters: list[dict[str, Any]] = list()
+    for key, value in model_parameters.items():
+        perturbed_model_parameter = model_parameters.copy()
+        perturbation = value*1e-2
+        perturbations.append(perturbation)
+        perturbed_model_parameter.update({key: value + perturbation})
+        list_of_perturbed_model_parameters.append(perturbed_model_parameter)
+ 
     # Base model
-    model = generate_original_model(density=rho, E_modulus=E)
-    M_base, K_base, _ = model.get_system_level_matrices()
+    base_model = generate_original_model(**model_parameters)
+    base_mass_matrix, base_stiffness_matrix, _ = base_model.get_system_level_matrices()
 
-    # Perturb E [ΔK/ΔE]
-    model_E = generate_original_model(density=rho,E_modulus= E + delta_E)
-    _, K_E, _ = model_E.get_system_level_matrices()
-    dK_dE = (K_E - K_base) / delta_E # Finite difference approximation
-
-    # Perturb rho [ΔM/Δρ]
-    dM_drho = M_base / rho
+    mass_matrix_derivative = list()
+    stiffness_matrix_derivative = list()
+    # perturb
+    for i, perturbed_model_parameter in enumerate(list_of_perturbed_model_parameters):
+        perturbed_model = generate_original_model(**perturbed_model_parameter)
+        perturbed_mass_matrix, perturbed_stiffness_matrix, _ = perturbed_model.get_system_level_matrices()
+        mass_matrix_derivative.append((perturbed_mass_matrix - base_mass_matrix) / perturbations[i])
+        stiffness_matrix_derivative.append((perturbed_stiffness_matrix - base_stiffness_matrix) / perturbations[i])
 
     # Compute Jacobian
-    g = len(omega)
-    J = np.zeros((g, 2))  # 2 columns: [∂ω/∂E, ∂ω/∂rho]
-    for i in range(g):
-        phi_i = phi[:, i]
-        w = omega[i]
-        J[i, 0] = (phi_i.T @ dK_dE @ phi_i) / (2 * w)
-        J[i, 1] = - (w / 2) * (phi_i.T @ dM_drho @ phi_i)
-    return J
+    Jacobian = np.zeros((len(omega), len(model_parameters)))
+    for i in range(Jacobian.shape[0]):
+        for j in range(Jacobian.shape[1]):
+            phi_i = phi[:, i]
+            w = omega[i]
+            Jacobian[i, j] = 1/2 * phi_i.T @ (1/w * stiffness_matrix_derivative[j] - w * mass_matrix_derivative[j]) @ phi_i
+    return Jacobian
 
 # Function to perform the Newton update
-def newton_update(theta0: npt.NDArray, omega_target, eps=1e-6, it_limit=1000, alpha=1):
-    theta_hist = [theta0.copy()]
+def newton_update(theta0: dict[str, Any | None], omega_target, eps=1e-6, it_limit=100):
+
+    model_signature = inspect.signature(generate_original_model)
+
+    theta_hist: dict[str, list[Any]] = dict()
+    for key, value in theta0.items():
+        if value is None:
+            value = model_signature.parameters[key].default
+            theta0[key] = value
+        theta_hist.update({key: [value]})
+    
+    theta_old = theta0
     delta = 2 * eps
     k = 1
 
     while delta >= eps:
-        E, rho = theta_hist[-1]
-        model = generate_original_model(density=rho, E_modulus=E)
-        omega, phi,_ = model.get_modal_param(eigen_value_sort=False, convert_to_frequencies=False, normalize=True)
-        omega = np.sqrt(omega[:5])
-        J = compute_jacobian(phi, omega, E, rho)
-        update_step = theta_hist[-1] + pinv(J) @ (omega_target - omega)
-        theta_k = alpha * update_step  # Damped update (if necessary)
-        delta = np.max(np.abs((theta_k - theta_hist[-1]) / (theta_hist[-1] + 1e-12)))
-        theta_hist.append(theta_k)
+        model = generate_original_model(**theta_old)
+        omega, phi,_ = model.get_modal_param(eigen_value_sort=True, convert_to_frequencies=False, normalize=True)
+        omega = np.sqrt(omega[[0, 1, 2]])
+        Jacobian = compute_jacobian(phi, omega, **theta_old)
+        theta_new = dict()
+        parameter_update = pinv(Jacobian) @ (omega_target - omega)
+        for i, (key, value) in enumerate(theta_old.items()):
+            theta_new.update({key: value + parameter_update[i]})
+
+        delta = np.max(np.abs((np.array(list(theta_new.values())) - np.array(list(theta_old.values()))) / (np.array(list(theta_old.values())) + 1e-12)))
+        
+        theta_old = theta_new
+
+        for key, value in theta_new.items():
+            theta_hist[key].append(value)
+
         k += 1
         if k > it_limit:
             print("Not converged within iteration limit")
             break
 
     print(f"Convergence after {k-1} iterations")
-    return np.array(theta_hist).T
+    print(omega)
+    return theta_hist
 
 if __name__ == "__main__":
 
-    # SSI for system (measurement)
-    data_2d_prim = pd.read_csv(r"Sorted timeseries\Forced\2D\Accelerometer\Calibrated\timeseries_serial_output_2_gr3_2D.csv", nrows=1000)
-    data_2d_sec = pd.read_csv(r"Sorted timeseries\Forced\2D\Accelerometer\Calibrated\timeseries_serial_output_2_gr3_2D.csv", nrows=1000)
-    data_1d_twist = pd.read_csv("Sorted timeseries/Free/1D/Calibrated/Torsional_axis_data/X/timeseries_gr3_twisting.txt", nrows=1000)
-
-    # Desired column order
-    ordered_columns = [
-    "Sensor 1 - X", "Sensor 2 - X", "Sensor 3 - X", "Sensor 4 - X",
-    "Sensor 1 - Y", "Sensor 2 - Y", "Sensor 3 - Y", "Sensor 4 - Y"]
-
-    # Extract reordered sensor data as a NumPy array
-    sensor_data_2d_prim = data_2d_prim[ordered_columns[4:8]].to_numpy()  # shape: (1000, 8)
-    sensor_data_2d_sec = data_2d_sec[ordered_columns[0:4]].to_numpy()  # shape: (1000, 8)
-    sensor_data_1d_twist = data_1d_twist[ordered_columns[0:4]].to_numpy()  # shape: (1000, 8)
-
-    # Calculate eigenfrequencies [Hz] of the data
-    omega_target_si_2d_primary,_,_ = system_identifier(output_data=sensor_data_2d_prim)
-    omega_target_si_2d_secondary,_,_ = system_identifier(output_data=sensor_data_2d_sec)
-    omega_target_si_twist,_,_ = system_identifier(output_data=sensor_data_1d_twist, time_step= 1/927)
-
-    # Eigenfrequencies [Hz] of the model
-    system_features = generate_original_model()
-    omega_model, _, _ = system_features.get_modal_param(eigen_value_sort=False, convert_to_frequencies=True, normalize=True)
-
-    from itertools import zip_longest
-
-    print(f"{'Primary [Hz]':>15} {'Secondary [Hz]':>15} {'Torsional [Hz]':>15} {'Model [Hz]':>15}")
-
-    for p, s, t, m in zip_longest(omega_target_si_2d_primary, omega_target_si_2d_secondary, omega_target_si_twist, omega_model[:12], fillvalue=np.nan):
-        print(f"{p:15.2f} {s:15.2f} {t:15.2f} {m:15.2f}")
-
-
     # System features (for comparison)
     system_features = generate_original_model()
-    omega_target, _, _ = system_features.get_modal_param(eigen_value_sort=False, convert_to_frequencies=False, normalize=True)
-    omega_target = np.sqrt(omega_target)[:5]
+    #omega_target, _, _ = system_features.get_modal_param(eigen_value_sort=True, convert_to_frequencies=False, normalize=True)
+    #omega_target = np.sqrt(np.abs(omega_target[[0, 2, 4, 9]]))
+    omega_target = np.array([26.704, 37.07, 225.315])
 
-    # Model parameters - Initial guess for E and rho
-    E_init = 2.2e11  # Pa (steel)
-    rho_init = 7950  # kg/m³
-    theta0 = np.array([E_init, rho_init])
+    # Model parameters
+    theta0 = {'E_modulus': None, 'density': None, 'point_mass': None}
 
     # Run Newton update
     theta_hist = newton_update(theta0, omega_target)
-    print(f"Iteration 0:     E = {theta_hist[0, 0]:.3e}, rho = {theta_hist[1, 0]:.2f}")
+    """ print(f"Iteration 0:     E = {theta_hist[0, 0]:.3e}, rho = {theta_hist[1, 0]:.2f}")
     print(f"Iteration {theta_hist.shape[1] - 1}: E = {theta_hist[0, -1]:.3e}, rho = {theta_hist[1, -1]:.2f}")
+    print(f"Number of eigenfreq {omega_target.shape}") """
+    
 
     # Plotting the convergence of E modulus and density
     plt.figure()
-    plt.plot(theta_hist[0], label="E modulus")
+    plt.plot(theta_hist['E_modulus'], label="E modulus")
     plt.xlabel("Iteration")
     plt.ylabel("Parameter estimate")
     plt.title("Convergence of E modulus")
@@ -117,10 +113,19 @@ if __name__ == "__main__":
     plt.legend()
 
     plt.figure()
-    plt.plot(theta_hist[1], label="Density", color='green')
+    plt.plot(theta_hist['density'], label="Density", color='green')
     plt.xlabel("Iteration")
     plt.ylabel("Density [kg/m³]")
     plt.title("Convergence of Density")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+
+    plt.figure()
+    plt.plot(theta_hist['point_mass'], label="point mass", color='green')
+    plt.xlabel("Iteration")
+    plt.ylabel("mass [kg]")
+    plt.title("Convergence of point mass")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
