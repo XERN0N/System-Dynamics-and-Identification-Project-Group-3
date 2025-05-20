@@ -1,100 +1,141 @@
 # Script for model updating based on sensitivity analysis
 import numpy as np
+import numpy.typing as npt
 import matplotlib.pyplot as plt
-from scipy.linalg import eigh, pinv
+from scipy.linalg import pinv
+from OriginalModel import *
+from typing import Any
+import inspect
 
-def chain(m_vec, c_vec, k_vec):
-    dof = len(m_vec)
-    M = np.diag(m_vec)
-    K = np.zeros((dof, dof))
-    C = np.zeros((dof, dof))
+# Function to compute the Jacobian matrix
+def compute_jacobian(phi, omega, **model_parameters):
+    perturbations = list()
+    list_of_perturbed_model_parameters: list[dict[str, Any]] = list()
+    for key, value in model_parameters.items():
+        perturbed_model_parameter = model_parameters.copy()
+        perturbation = value*1e-2
+        perturbations.append(perturbation)
+        perturbed_model_parameter.update({key: value + perturbation})
+        list_of_perturbed_model_parameters.append(perturbed_model_parameter)
+ 
+    # Base model
+    base_model = generate_original_model(**model_parameters)
+    base_mass_matrix, base_stiffness_matrix, _ = base_model.get_system_level_matrices()
+
+    mass_matrix_derivative = list()
+    stiffness_matrix_derivative = list()
+    # perturb
+    for i, perturbed_model_parameter in enumerate(list_of_perturbed_model_parameters):
+        perturbed_model = generate_original_model(**perturbed_model_parameter)
+        perturbed_mass_matrix, perturbed_stiffness_matrix, _ = perturbed_model.get_system_level_matrices()
+        mass_matrix_derivative.append((perturbed_mass_matrix - base_mass_matrix) / perturbations[i])
+        stiffness_matrix_derivative.append((perturbed_stiffness_matrix - base_stiffness_matrix) / perturbations[i])
+
+    # Compute Jacobian
+    Jacobian = np.zeros((len(omega), len(model_parameters)))
+    for i in range(Jacobian.shape[0]):
+        for j in range(Jacobian.shape[1]):
+            phi_i = phi[:, i]
+            w = omega[i]
+            Jacobian[i, j] = 1/2 * phi_i.T @ (1/w * stiffness_matrix_derivative[j] - w * mass_matrix_derivative[j]) @ phi_i
+    return Jacobian
+
+# Function to perform the Newton update
+def newton_update(parameters: dict[str, Any | None], target_frequencies: npt.ArrayLike, frequency_indices: npt.ArrayLike, global_relative_tolerance: float = 1e-6, iteration_limit: int = 100):
+    """
+    Performs model updating by varying beam parameters until eigen frequencies match target frequencies.
+
+    Parameters
+    ----------
+    parameters : dict[str, Any | None]
+        The parameters to update as keys with their initial values. If the value is None, a default value is used.
+    target_frequencies : array_like
+        The frequencies to aim for with shape (n,).
+    frequency_indices : array_like
+        The indices of the target frequencies in the model eigen values.
+    global_relative_tolerance : float, optional
+        The relative tolerance stop criteria for all parameters. Default is 1e-6.
+    iteration_limit : int, optional
+        The maximum number of iterations stop criteria. Default is 100.
+
+    Returns
+    -------
+    tuple[Beam_Lattice, dict[str, Any], ndarray]
+        A tuple containing firstly the final model, secondly the history of the parameters, and thirdly the history of the features.
+    """
+    frequency_indices = np.asarray(frequency_indices)
+
+    default_values = Default_beam_edge_parameters.default_beam_edge_parameters.value.copy()
+    default_values.update(Default_beam_edge_parameters.default_point_mass_parameters.value.copy())
+
+    parameter_history: dict[str, list[Any]] = dict()
+    for key, value in parameters.items():
+        if value is None:
+            value = default_values[key]
+            parameters[key] = value
+        parameter_history.update({key: [value]})
     
-    for i in range(dof):
-        K[i, i] += k_vec[i]
-        if i > 0:
-            K[i, i] += k_vec[i-1]
-            K[i, i-1] -= k_vec[i-1]
-            K[i-1, i] -= k_vec[i-1]
+    parameter_old = parameters
+    delta = 2 * global_relative_tolerance
+    k = 1
+    feature_history = []
 
-        C[i, i] += c_vec[i]
-        if i > 0:
-            C[i, i] += c_vec[i-1]
-            C[i, i-1] -= c_vec[i-1]
-            C[i-1, i] -= c_vec[i-1]
+    while delta >= global_relative_tolerance:
+        model = generate_original_model(**parameter_old)
+        omega, phi,_ = model.get_modal_param(eigen_value_sort=True, convert_to_frequencies=False, normalize=True)
+        omega = np.sqrt(omega[frequency_indices])
+        feature_history.append(omega)
+        Jacobian = compute_jacobian(phi, omega, **parameter_old)
+        parameter_new = dict()
+        parameter_update = pinv(Jacobian) @ (target_frequencies - omega)
+        for i, (key, value) in enumerate(parameter_old.items()):
+            parameter_new.update({key: value + parameter_update[i]})
+        delta = np.max(np.abs((np.array(list(parameter_new.values())) - list(parameter_old.values()))) / np.abs(list(parameter_old.values())))
+        parameter_old = parameter_new
 
-    return M, C, K
+        for key, value in parameter_new.items():
+            parameter_history[key].append(value)
 
-def compute_modal_properties(M, K):
-    lam, phi = eigh(K, M)
-    omega = np.sqrt(np.maximum(lam, 0))
-    idx = np.argsort(omega)
-    return omega[idx], phi[:, idx]
-
-def compute_jacobian(phi, omega, dK_list):
-    g = len(omega)
-    p = len(dK_list)
-    J = np.zeros((g, p))
-    for j in range(g):
-        for i in range(p):
-            J[j, i] = (phi[:, j].T @ dK_list[i] @ phi[:, j]) / (2 * omega[j])
-    return J
-
-def newton_update(theta0, dK_list, M, omega_target, eps=1e-8, it_limit=1000):
-    theta_hist = [theta0.copy()]
-    delta = 2 * eps
-    i = 1
-    while delta >= eps:
-        theta = theta_hist[-1]
-        _, _, K = chain(np.zeros_like(theta), np.zeros_like(theta), theta)
-        omega, phi = compute_modal_properties(M, K)
-        J = compute_jacobian(phi, omega, dK_list)
-        theta_new = theta + pinv(J) @ (omega_target - omega)
-        delta = np.max(np.abs((theta_new - theta) / (theta + 1e-12)))
-        theta_hist.append(theta_new)
-        i += 1
-        if i > it_limit:
+        k += 1
+        if k > iteration_limit:
             print("Not converged within iteration limit")
             break
-    print(f"Converged after {i-1} iterations")
-    return np.array(theta_hist).T  # shape: (dof, iterations)
 
-# --- MAIN SCRIPT ---
-dof = 3
-m = np.ones(dof)
-k = 100 * np.ones(dof)
-c = 0.01 * np.ones(dof)
+    print(f"Convergence after {k-1} iterations")
+    return model, parameter_history, np.array(feature_history).T
 
-# Initial model
-M, _, K = chain(m, np.zeros_like(c), k)
-omega_model, phi_model = compute_modal_properties(M, K)
+if __name__ == "__main__":
 
-# Perturbed system (truth)
-ks = k.copy()
-ks[0] *= 0.8
-ks[-1] *= 1.1
-_, _, Ks = chain(m, np.zeros_like(c), ks)
-omega_target, _ = compute_modal_properties(M, Ks)
+    # System features (for comparison)
+    system_features = generate_original_model()
+    #omega_target, _, _ = system_features.get_modal_param(eigen_value_sort=True, convert_to_frequencies=False, normalize=True)
+    #omega_target = np.sqrt(np.abs(omega_target[[0, 2, 4, 9]]))
+    omega_target = np.array([26.704, 37.07, 225.315])
 
-# Sensitivities
-dK_list = []
-for i in range(dof):
-    dk = np.zeros(dof)
-    dk[i] = 1.0
-    _, _, dK = chain(m, np.zeros(dof), dk)
-    dK_list.append(dK)
+    # Model parameters
+    theta0 = {'cross_sectional_area': None, 'point_mass': None}
 
-# Run Newton update
-theta0 = k.copy()
-theta_hist = newton_update(theta0, dK_list, M, omega_target)
+    # Run Newton update
+    _, theta_hist, omega_hist = newton_update(theta0, omega_target, (0, 1, 2))    
 
-# Plotting
-plt.figure(figsize=(8, 5))
-for i in range(dof):
-    plt.semilogy(theta_hist[i], label=f'$k_{i+1}$')
-plt.xlabel('Iteration')
-plt.ylabel('Parameter estimate')
-plt.title('Evolution of estimated parameters')
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+    parameter_fig, parameter_axs = plt.subplots(len(theta_hist))
+
+    for i, key in enumerate(theta_hist.keys()):
+        parameter_axs[i].plot(theta_hist[key])
+        parameter_axs[i].grid()
+        parameter_axs[i].legend()
+        parameter_axs[i].set_title(f"Convergence of {key}")
+    
+    parameter_fig.tight_layout()
+
+    feature_fig, feature_axs = plt.subplots(len(omega_hist))
+
+    for i, feature_history in enumerate(omega_hist):
+        feature_axs[i].plot(feature_history)
+        feature_axs[i].grid()
+        feature_axs[i].legend()
+        feature_axs[i].set_title(f"Convergence of feature {i}")
+
+    feature_fig.tight_layout()
+
+    plt.show()
