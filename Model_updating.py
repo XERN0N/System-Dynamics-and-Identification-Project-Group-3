@@ -41,7 +41,9 @@ def compute_jacobian(phi, omega, **model_parameters):
     return Jacobian
 
 # Function to perform the Newton update
-def newton_update(theta0: dict[str, Any | None], omega_target, eps=1e-6, it_limit=100):
+def newton_update(theta0: dict[str, Any | None], omega_target: npt.ArrayLike, omega_indices: npt.ArrayLike, eps=1e-6, it_limit=100):
+
+    omega_indices = np.asarray(omega_indices)
 
     default_values = Default_beam_edge_parameters.default_beam_edge_parameters.value.copy()
     default_values.update(Default_beam_edge_parameters.default_point_mass_parameters.value.copy())
@@ -56,11 +58,13 @@ def newton_update(theta0: dict[str, Any | None], omega_target, eps=1e-6, it_limi
     theta_old = theta0
     delta = 2 * eps
     k = 1
+    omega_hist = []
 
     while delta >= eps:
         model = generate_original_model(**theta_old)
         omega, phi,_ = model.get_modal_param(eigen_value_sort=True, convert_to_frequencies=False, normalize=True)
-        omega = np.sqrt(omega[[0, 1, 2]])
+        omega = np.sqrt(omega[omega_indices])
+        omega_hist.append(omega)
         Jacobian = compute_jacobian(phi, omega, **theta_old)
         theta_new = dict()
         parameter_update = pinv(Jacobian) @ (omega_target - omega)
@@ -90,26 +94,26 @@ if __name__ == "__main__":
     omega_target = np.array([26.704, 37.07, 225.315])
 
     # Model parameters
-    theta0 = {'E_modulus': None, 'density': None, 'point_mass': None}
+    theta0 = {'cross_sectional_area': None, 'point_mass': None}
 
     # Run Newton update
-    theta_hist = newton_update(theta0, omega_target)
+    theta_hist = newton_update(theta0, omega_target, (0, 1, 2))
     """ print(f"Iteration 0:     E = {theta_hist[0, 0]:.3e}, rho = {theta_hist[1, 0]:.2f}")
     print(f"Iteration {theta_hist.shape[1] - 1}: E = {theta_hist[0, -1]:.3e}, rho = {theta_hist[1, -1]:.2f}")
     print(f"Number of eigenfreq {omega_target.shape}") """
     
 
     # Plotting the convergence of E modulus and density
-    plt.figure()
+    """ plt.figure()
     plt.plot(theta_hist['E_modulus'], label="E modulus")
     plt.xlabel("Iteration")
     plt.ylabel("Parameter estimate")
     plt.title("Convergence of E modulus")
     plt.grid(True)
-    plt.legend()
+    plt.legend() """
 
     plt.figure()
-    plt.plot(theta_hist['density'], label="Density", color='green')
+    plt.plot(theta_hist['cross_sectional_area'], label="Density", color='green')
     plt.xlabel("Iteration")
     plt.ylabel("Density [kg/m³]")
     plt.title("Convergence of Density")
