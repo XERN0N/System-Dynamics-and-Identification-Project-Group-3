@@ -41,49 +41,68 @@ def compute_jacobian(phi, omega, **model_parameters):
     return Jacobian
 
 # Function to perform the Newton update
-def newton_update(theta0: dict[str, Any | None], omega_target: npt.ArrayLike, omega_indices: npt.ArrayLike, eps=1e-6, it_limit=100):
+def newton_update(parameters: dict[str, Any | None], target_frequencies: npt.ArrayLike, frequency_indices: npt.ArrayLike, global_relative_tolerance: float = 1e-6, iteration_limit: int = 100):
+    """
+    Performs model updating by varying beam parameters until eigen frequencies match target frequencies.
 
-    omega_indices = np.asarray(omega_indices)
+    Parameters
+    ----------
+    parameters : dict[str, Any | None]
+        The parameters to update as keys with their initial values. If the value is None, a default value is used.
+    target_frequencies : array_like
+        The frequencies to aim for with shape (n,).
+    frequency_indices : array_like
+        The indices of the target frequencies in the model eigen values.
+    global_relative_tolerance : float, optional
+        The relative tolerance stop criteria for all parameters. Default is 1e-6.
+    iteration_limit : int, optional
+        The maximum number of iterations stop criteria. Default is 100.
+
+    Returns
+    -------
+    tuple[Beam_Lattice, dict[str, Any], ndarray]
+        A tuple containing firstly the final model, secondly the history of the parameters, and thirdly the history of the features.
+    """
+    frequency_indices = np.asarray(frequency_indices)
 
     default_values = Default_beam_edge_parameters.default_beam_edge_parameters.value.copy()
     default_values.update(Default_beam_edge_parameters.default_point_mass_parameters.value.copy())
 
-    theta_hist: dict[str, list[Any]] = dict()
-    for key, value in theta0.items():
+    parameter_history: dict[str, list[Any]] = dict()
+    for key, value in parameters.items():
         if value is None:
             value = default_values[key]
-            theta0[key] = value
-        theta_hist.update({key: [value]})
+            parameters[key] = value
+        parameter_history.update({key: [value]})
     
-    theta_old = theta0
-    delta = 2 * eps
+    parameter_old = parameters
+    delta = 2 * global_relative_tolerance
     k = 1
-    omega_hist = []
+    feature_history = []
 
-    while delta >= eps:
-        model = generate_original_model(**theta_old)
+    while delta >= global_relative_tolerance:
+        model = generate_original_model(**parameter_old)
         omega, phi,_ = model.get_modal_param(eigen_value_sort=True, convert_to_frequencies=False, normalize=True)
-        omega = np.sqrt(omega[omega_indices])
-        omega_hist.append(omega)
-        Jacobian = compute_jacobian(phi, omega, **theta_old)
-        theta_new = dict()
-        parameter_update = pinv(Jacobian) @ (omega_target - omega)
-        for i, (key, value) in enumerate(theta_old.items()):
-            theta_new.update({key: value + parameter_update[i]})
-        delta = np.max(np.abs((np.array(list(theta_new.values())) - list(theta_old.values()))) / np.abs(list(theta_old.values())))
-        theta_old = theta_new
+        omega = np.sqrt(omega[frequency_indices])
+        feature_history.append(omega)
+        Jacobian = compute_jacobian(phi, omega, **parameter_old)
+        parameter_new = dict()
+        parameter_update = pinv(Jacobian) @ (target_frequencies - omega)
+        for i, (key, value) in enumerate(parameter_old.items()):
+            parameter_new.update({key: value + parameter_update[i]})
+        delta = np.max(np.abs((np.array(list(parameter_new.values())) - list(parameter_old.values()))) / np.abs(list(parameter_old.values())))
+        parameter_old = parameter_new
 
-        for key, value in theta_new.items():
-            theta_hist[key].append(value)
+        for key, value in parameter_new.items():
+            parameter_history[key].append(value)
 
         k += 1
-        if k > it_limit:
+        if k > iteration_limit:
             print("Not converged within iteration limit")
             break
 
     print(f"Convergence after {k-1} iterations")
-    print(omega)
-    return theta_hist
+    return model, parameter_history, np.array(feature_history).T
 
 if __name__ == "__main__":
 
@@ -97,36 +116,26 @@ if __name__ == "__main__":
     theta0 = {'cross_sectional_area': None, 'point_mass': None}
 
     # Run Newton update
-    theta_hist = newton_update(theta0, omega_target, (0, 1, 2))
-    """ print(f"Iteration 0:     E = {theta_hist[0, 0]:.3e}, rho = {theta_hist[1, 0]:.2f}")
-    print(f"Iteration {theta_hist.shape[1] - 1}: E = {theta_hist[0, -1]:.3e}, rho = {theta_hist[1, -1]:.2f}")
-    print(f"Number of eigenfreq {omega_target.shape}") """
+    _, theta_hist, omega_hist = newton_update(theta0, omega_target, (0, 1, 2))    
+
+    parameter_fig, parameter_axs = plt.subplots(len(theta_hist))
+
+    for i, key in enumerate(theta_hist.keys()):
+        parameter_axs[i].plot(theta_hist[key])
+        parameter_axs[i].grid()
+        parameter_axs[i].legend()
+        parameter_axs[i].set_title(f"Convergence of {key}")
     
+    parameter_fig.tight_layout()
 
-    # Plotting the convergence of E modulus and density
-    """ plt.figure()
-    plt.plot(theta_hist['E_modulus'], label="E modulus")
-    plt.xlabel("Iteration")
-    plt.ylabel("Parameter estimate")
-    plt.title("Convergence of E modulus")
-    plt.grid(True)
-    plt.legend() """
+    feature_fig, feature_axs = plt.subplots(len(omega_hist))
 
-    plt.figure()
-    plt.plot(theta_hist['cross_sectional_area'], label="Density", color='green')
-    plt.xlabel("Iteration")
-    plt.ylabel("Density [kg/m³]")
-    plt.title("Convergence of Density")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
+    for i, feature_history in enumerate(omega_hist):
+        feature_axs[i].plot(feature_history)
+        feature_axs[i].grid()
+        feature_axs[i].legend()
+        feature_axs[i].set_title(f"Convergence of feature {i}")
 
-    plt.figure()
-    plt.plot(theta_hist['point_mass'], label="point mass", color='green')
-    plt.xlabel("Iteration")
-    plt.ylabel("mass [kg]")
-    plt.title("Convergence of point mass")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
+    feature_fig.tight_layout()
+
     plt.show()
